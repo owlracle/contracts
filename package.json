@@ -4,9 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "npx hardhat run --network localhost index.js",
-    "deploy": "npx hardhat run --network localhost scripts/deploy.js",
+    "deploy": "npx hardhat run --network localhost deploy/OwlFarm.js",
     "node": "npx hardhat node",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npx hardhat test test/OwlFarm.js"
   },
   "author": "Pablo Werlang",
   "license": "GPL-3.0",
