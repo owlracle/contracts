@@ -2,9 +2,11 @@
 pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@prb/math/contracts/PRBMathUD60x18.sol";
 import "./OwlToken.sol";
 
 contract OwlFarm {
+    using PRBMathUD60x18 for uint256;
 
     // total lp staking in the pool
     mapping(address => uint256) public stakingBalance;
@@ -85,13 +87,13 @@ contract OwlFarm {
     // this logic is still flawed. overflow
     function calculateYieldTotal(address user) public view returns(uint256) {
         // must make this changeable by owner in the future
-        uint256 depleteCoef = 0.0000005;
+        uint256 depleteCoef = 5 * 10**18 / 10000000 + 10**18;
         uint256 time = calculateYieldTime(user);
-        uint256 depletePerc = 1 - ((1 - depleteCoef) ** time);
-        uint256 poolRatio = (stakingBalance[user]) / totalLpBalance;
-        uint256 rewardPerc = depletePerc * poolRatio;
-        uint256 rawYield = rewardPerc * totalOwlBalance;
-        return rawYield;
+        uint256 depletePerc = 10**18 - depleteCoef.pow(time * 10**18);
+        uint256 poolRatio = (stakingBalance[user] * 10**18).div(totalLpBalance * 10**18);
+        uint256 rewardPerc = depletePerc.mul(poolRatio);
+        uint256 rawYield = rewardPerc.mul(totalOwlBalance * 10**18);
+        return rawYield / 10**18;
     } 
 
     function withdrawYield() public {
