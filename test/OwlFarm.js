@@ -14,6 +14,7 @@ describe("OwlFarm", () => {
     let mockDai;
 
     const daiAmount = ethers.utils.parseEther("25000");
+    const totalOwl = ethers.utils.parseEther("1000000");
 
     beforeEach(async() => {
         const OwlFarm = await ethers.getContractFactory("OwlFarm");
@@ -26,8 +27,11 @@ describe("OwlFarm", () => {
             mockDai.mint(alice.address, daiAmount),
             mockDai.mint(bob.address, daiAmount),
         ]);
-        owlToken = await OwlToken.deploy();
-        await Promise.all([ owlToken.mint(bob.address, daiAmount) ]);
+        owlToken = await OwlToken.deploy(totalOwl);
+
+        await owlToken.connect(owner).approve(owner.address, totalOwl);
+        await owlToken.transferFrom(owner.address, bob.address, daiAmount);
+
         owlFarm = await OwlFarm.deploy(mockDai.address, owlToken.address, 5e11);
     })
 
