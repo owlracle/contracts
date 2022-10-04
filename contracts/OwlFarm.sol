@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.9;
+pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@prb/math/contracts/PRBMathUD60x18.sol";
@@ -30,7 +30,7 @@ contract OwlFarm is Ownable {
     event Stake(address indexed from, uint256 amount);
     event Unstake(address indexed from, uint256 amount);
     event YieldWithdraw(address indexed to, uint256 amount);
-    event FillContract(address indexed from, uint256 amount);
+    event AddFunds(address indexed from, uint256 amount);
 
     constructor(
         IERC20 _lpToken,
@@ -44,10 +44,10 @@ contract OwlFarm is Ownable {
             yield = _yield;
         }
 
-    function stake(uint256 amount) public {
+    function stake(uint256 _amount) public {
         require(
-            amount > 0 &&
-            lpToken.balanceOf(msg.sender) >= amount, 
+            _amount > 0 &&
+            lpToken.balanceOf(msg.sender) >= _amount, 
             "You cannot stake zero tokens");
             
         if(isStaking[msg.sender] == true){
@@ -55,24 +55,24 @@ contract OwlFarm is Ownable {
             unrealizedBalance[msg.sender] += toTransfer;
         }
 
-        lpToken.transferFrom(msg.sender, address(this), amount);
-        stakingBalance[msg.sender] += amount;
-        totalLpBalance += amount;
+        lpToken.transferFrom(msg.sender, address(this), _amount);
+        stakingBalance[msg.sender] += _amount;
+        totalLpBalance += _amount;
         startTime[msg.sender] = block.timestamp;
         isStaking[msg.sender] = true;
-        emit Stake(msg.sender, amount);
+        emit Stake(msg.sender, _amount);
     }
 
-    function unstake(uint256 amount) public {
+    function unstake(uint256 _amount) public {
         require(
             isStaking[msg.sender] = true &&
-            stakingBalance[msg.sender] >= amount, 
+            stakingBalance[msg.sender] >= _amount, 
             "Nothing to unstake"
         );
         uint256 yieldTransfer = calculateYieldTotal(msg.sender);
         startTime[msg.sender] = block.timestamp;
-        uint256 balTransfer = amount;
-        amount = 0;
+        uint256 balTransfer = _amount;
+        _amount = 0;
         stakingBalance[msg.sender] -= balTransfer;
         totalLpBalance -= balTransfer;
         unrealizedBalance[msg.sender] += yieldTransfer;
@@ -83,9 +83,9 @@ contract OwlFarm is Ownable {
         emit Unstake(msg.sender, balTransfer);
     }
 
-    function calculateYieldTime(address user) public view returns(uint256){
+    function calculateYieldTime(address _user) public view returns(uint256){
         uint256 end = block.timestamp;
-        uint256 totalTime = end - startTime[user];
+        uint256 totalTime = end - startTime[_user];
         return totalTime;
     }
 
@@ -98,12 +98,12 @@ contract OwlFarm is Ownable {
     }
 
     // this logic is still flawed. overflow
-    function calculateYieldTotal(address user) public view returns(uint256) {
+    function calculateYieldTotal(address _user) public view returns(uint256) {
         // must make this changeable by owner in the future
         uint256 formattedYield = yield + 1e18;
-        uint256 time = PRBMathUD60x18.fromUint( calculateYieldTime(user) );
+        uint256 time = PRBMathUD60x18.fromUint( calculateYieldTime(_user) );
         uint256 depletePerc = formattedYield.pow(time) - 1e18;
-        uint256 poolRatio = stakingBalance[user].div(totalLpBalance);
+        uint256 poolRatio = stakingBalance[_user].div(totalLpBalance);
         uint256 rewardPerc = depletePerc.mul(poolRatio);
         uint256 rawYield = rewardPerc.mul(totalOwlBalance);
         return rawYield;
@@ -132,14 +132,14 @@ contract OwlFarm is Ownable {
         emit YieldWithdraw(msg.sender, toTransfer);
     }
 
-    function fillContract(uint256 amount) public {
+    function addFunds(uint256 _amount) public {
         require(
-            amount > 0 &&
-            lpToken.balanceOf(msg.sender) >= amount, 
+            _amount > 0 &&
+            lpToken.balanceOf(msg.sender) >= _amount, 
             "You do not have enough tokens");
             
-        owlToken.transferFrom(msg.sender, address(this), amount);
-        totalOwlBalance += amount;
-        emit FillContract(msg.sender, amount);
+        owlToken.transferFrom(msg.sender, address(this), _amount);
+        totalOwlBalance += _amount;
+        emit AddFunds(msg.sender, _amount);
     } 
 }

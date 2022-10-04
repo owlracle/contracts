@@ -1,6 +1,6 @@
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
-const { time, restore, takeSnapshot } = require("@nomicfoundation/hardhat-network-helpers");
+const { time, takeSnapshot } = require("@nomicfoundation/hardhat-network-helpers");
 
 
 describe("OwlFarm", () => {
@@ -85,7 +85,7 @@ describe("OwlFarm", () => {
         })
     })
 
-    describe("FillContract", async() => {
+    describe("AddFunds", async() => {
 
         it("should remove token form user and add to contract", async() => {
             const testValue = 10;
@@ -93,7 +93,7 @@ describe("OwlFarm", () => {
 
             let toTransfer = ethers.utils.parseEther(testValue.toString());
             await owlToken.connect(bob).approve(owlFarm.address, toTransfer);
-            await owlFarm.connect(bob).fillContract(toTransfer);
+            await owlFarm.connect(bob).addFunds(toTransfer);
     
             const tokenBalance = await owlFarm.totalOwlBalance();
 
@@ -132,7 +132,7 @@ describe("OwlFarm", () => {
         beforeEach(async() => {
             let toTransfer = ethers.utils.parseEther("10000");
             await owlToken.connect(bob).approve(owlFarm.address, toTransfer);
-            await owlFarm.connect(bob).fillContract(toTransfer);
+            await owlFarm.connect(bob).addFunds(toTransfer);
 
             toTransfer = ethers.utils.parseEther("990");
             await mockDai.connect(bob).approve(owlFarm.address, toTransfer);
