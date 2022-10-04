@@ -75,8 +75,8 @@ contract OwlFarm is Ownable {
         amount = 0;
         stakingBalance[msg.sender] -= balTransfer;
         totalLpBalance -= balTransfer;
-        lpToken.transfer(msg.sender, balTransfer);
         unrealizedBalance[msg.sender] += yieldTransfer;
+        lpToken.transfer(msg.sender, balTransfer);
         if(stakingBalance[msg.sender] == 0){
             isStaking[msg.sender] = false;
         }
@@ -127,8 +127,8 @@ contract OwlFarm is Ownable {
         }
 
         startTime[msg.sender] = block.timestamp;
-        owlToken.transfer(msg.sender, toTransfer);
         totalOwlBalance -= toTransfer;
+        owlToken.transfer(msg.sender, toTransfer);
         emit YieldWithdraw(msg.sender, toTransfer);
     }
 
