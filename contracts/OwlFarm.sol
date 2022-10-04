@@ -97,9 +97,7 @@ contract OwlFarm is Ownable {
         yield = _yield;
     }
 
-    // this logic is still flawed. overflow
     function calculateYieldTotal(address _user) public view returns(uint256) {
-        // must make this changeable by owner in the future
         uint256 formattedYield = yield + 1e18;
         uint256 time = PRBMathUD60x18.fromUint( calculateYieldTime(_user) );
         uint256 depletePerc = formattedYield.pow(time) - 1e18;
