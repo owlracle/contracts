@@ -12,6 +12,7 @@
   "license": "GPL-3.0",
   "description": "Owlracle contracts",
   "dependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.6",
     "@prb/math": "^2.5.0",
     "hardhat": "^2.11.2"
   },

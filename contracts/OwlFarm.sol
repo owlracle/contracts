@@ -3,9 +3,10 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@prb/math/contracts/PRBMathUD60x18.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./OwlToken.sol";
 
-contract OwlFarm {
+contract OwlFarm is Ownable {
     using PRBMathUD60x18 for uint256;
 
     // total lp staking in the pool
@@ -20,6 +21,8 @@ contract OwlFarm {
     uint256 public totalLpBalance;
     // total owl in the contract
     uint256 public totalOwlBalance;
+    // Owl token reward each second
+    uint256 public yield;
 
     IERC20 public lpToken;
     OwlToken public owlToken;
@@ -31,12 +34,14 @@ contract OwlFarm {
 
     constructor(
         IERC20 _lpToken,
-        OwlToken _owlToken
+        OwlToken _owlToken,
+        uint256 _yield
         ) {
             lpToken = _lpToken;
             owlToken = _owlToken;
             totalLpBalance = 0;
             totalOwlBalance = 0;
+            yield = _yield;
         }
 
     function stake(uint256 amount) public {
@@ -84,16 +89,24 @@ contract OwlFarm {
         return totalTime;
     }
 
+    function setLpToken(IERC20 _lpToken) public onlyOwner {
+        lpToken = _lpToken;
+    }
+
+    function setReward(uint256 _yield) public onlyOwner {
+        yield = _yield;
+    }
+
     // this logic is still flawed. overflow
     function calculateYieldTotal(address user) public view returns(uint256) {
         // must make this changeable by owner in the future
-        uint256 depleteCoef = 5 * 10**18 / 10000000 + 10**18;
-        uint256 time = calculateYieldTime(user);
-        uint256 depletePerc = 10**18 - depleteCoef.pow(time * 10**18);
-        uint256 poolRatio = (stakingBalance[user] * 10**18).div(totalLpBalance * 10**18);
+        uint256 formattedYield = yield + 1e18;
+        uint256 time = PRBMathUD60x18.fromUint( calculateYieldTime(user) );
+        uint256 depletePerc = formattedYield.pow(time) - 1e18;
+        uint256 poolRatio = stakingBalance[user].div(totalLpBalance);
         uint256 rewardPerc = depletePerc.mul(poolRatio);
-        uint256 rawYield = rewardPerc.mul(totalOwlBalance * 10**18);
-        return rawYield / 10**18;
+        uint256 rawYield = rewardPerc.mul(totalOwlBalance);
+        return rawYield;
     } 
 
     function withdrawYield() public {
