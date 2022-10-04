@@ -1,6 +1,6 @@
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
-// import { time } from "@openzeppelin/test-helpers";
+const { time, restore, takeSnapshot } = require("@nomicfoundation/hardhat-network-helpers");
 
 
 describe("OwlFarm", () => {
@@ -24,10 +24,11 @@ describe("OwlFarm", () => {
         await Promise.all([
             mockDai.mint(owner.address, daiAmount),
             mockDai.mint(alice.address, daiAmount),
-            mockDai.mint(bob.address, daiAmount)
+            mockDai.mint(bob.address, daiAmount),
         ]);
         owlToken = await OwlToken.deploy();
-        owlFarm = await OwlFarm.deploy(mockDai.address, owlToken.address);
+        await Promise.all([ owlToken.mint(bob.address, daiAmount) ]);
+        owlFarm = await OwlFarm.deploy(mockDai.address, owlToken.address, 5e11);
     })
 
     describe("Init", async() => {
@@ -61,90 +62,155 @@ describe("OwlFarm", () => {
         })
 
         it("should revert with not enough funds", async() => {
-            let toTransfer = ethers.utils.parseEther("1000000")
-            await mockDai.approve(owlFarm.address, toTransfer)
-
-            await expect(owlFarm.connect(bob).stake(toTransfer))
-                .to.be.revertedWith("You cannot stake zero tokens")
+            let toTransfer = ethers.utils.parseEther("1000000");
+            await mockDai.approve(owlFarm.address, toTransfer);
+            await expect(owlFarm.connect(bob).stake(toTransfer)).to.be.revertedWith("You cannot stake zero tokens");
         })
     })
 
     describe("Unstake", async() => {
         beforeEach(async() => {
-            let toTransfer = ethers.utils.parseEther("100")
-            await mockDai.connect(alice).approve(owlFarm.address, toTransfer)
-            await owlFarm.connect(alice).stake(toTransfer)
+            let toTransfer = ethers.utils.parseEther("100");
+            await mockDai.connect(alice).approve(owlFarm.address, toTransfer);
+            await owlFarm.connect(alice).stake(toTransfer);
         })
 
         it("should unstake balance from user", async() => {
-            let toTransfer = ethers.utils.parseEther("100")
-            await owlFarm.connect(alice).unstake(toTransfer)
+            let toTransfer = ethers.utils.parseEther("100");
+            await owlFarm.connect(alice).unstake(toTransfer);
+            res = await owlFarm.stakingBalance(alice.address);
 
-            res = await owlFarm.stakingBalance(alice.address)
-            expect(Number(res))
-                .to.eq(0)
-
-            expect(await owlFarm.isStaking(alice.address))
-                .to.eq(false)
+            expect(Number(res)).to.eq(0);
+            expect(await owlFarm.isStaking(alice.address)).to.eq(false);
         })
     })
 
-    // describe("WithdrawYield", async() => {
+    describe("FillContract", async() => {
 
-    //     beforeEach(async() => {
-    //         await owlToken._transferOwnership(owlFarm.address)
-    //         let toTransfer = ethers.utils.parseEther("10")
-    //         await mockDai.connect(alice).approve(owlFarm.address, toTransfer)
-    //         await owlFarm.connect(alice).stake(toTransfer)
-    //     })
+        it("should remove token form user and add to contract", async() => {
+            const testValue = 10;
+            const tokenBefore = ethers.utils.formatEther( await owlToken.balanceOf(bob.address) );
 
-    //     it("should return correct yield time", async() => {
-    //         let timeStart = await owlFarm.startTime(alice.address)
-    //         expect(Number(timeStart))
-    //             .to.be.greaterThan(0)
+            let toTransfer = ethers.utils.parseEther(testValue.toString());
+            await owlToken.connect(bob).approve(owlFarm.address, toTransfer);
+            await owlFarm.connect(bob).fillContract(toTransfer);
+    
+            const tokenBalance = await owlFarm.totalOwlBalance();
 
-    //         // Fast-forward time
-    //         await time.increase(86400)
+            // contract received the right amount
+            expect( tokenBalance ).to.eq( toTransfer );
 
-    //         expect(await owlFarm.calculateYieldTime(alice.address))
-    //             .to.eq((86400))
-    //     })
+            const tokenAfter = ethers.utils.formatEther( await owlToken.balanceOf(bob.address) );
+    
+            // user wallet decreased the right amount
+            expect( tokenBefore - tokenAfter ).to.eq(testValue);
+        })
+    })
 
-    //     it("should mint correct token amount in total supply and user", async() => { 
-    //         await time.increase(86400)
+    describe("WithdrawYield", async() => {
+        const timeCapture = async (timestamp=0) => {
+            const blockNum = await ethers.provider.getBlockNumber();
+            const block = await ethers.provider.getBlock(blockNum);
+            return block.timestamp - timestamp;
+        }
+        const executeAndGoBack = async (callback) => {
+            const snapshot = await takeSnapshot();
+            const timeStart = await timeCapture();
 
-    //         let _time = await owlFarm.calculateYieldTime(alice.address)
-    //         let formatTime = _time / 86400
-    //         let staked = await owlFarm.stakingBalance(alice.address)
-    //         let bal = staked * formatTime
-    //         let newBal = ethers.utils.formatEther(bal.toString())
-    //         let expected = Number.parseFloat(newBal).toFixed(3)
+            const res = await callback();
 
-    //         await owlFarm.connect(alice).withdrawYield()
+            // get time it took to execute the commands
+            const timeDiff = await timeCapture(timeStart);
 
-    //         res = await owlToken.totalSupply()
-    //         let newRes = ethers.utils.formatEther(res)
-    //         let formatRes = Number.parseFloat(newRes).toFixed(3).toString()
+            // restore and advance time
+            await snapshot.restore();
+            await time.increase(timeDiff);
 
-    //         expect(expected)
-    //             .to.eq(formatRes)
+            return res;
+        }
 
-    //         res = await owlToken.balanceOf(alice.address)
-    //         newRes = ethers.utils.formatEther(res)
-    //         formatRes = Number.parseFloat(newRes).toFixed(3).toString()
+        beforeEach(async() => {
+            let toTransfer = ethers.utils.parseEther("10000");
+            await owlToken.connect(bob).approve(owlFarm.address, toTransfer);
+            await owlFarm.connect(bob).fillContract(toTransfer);
 
-    //         expect(expected)
-    //             .to.eq(formatRes)
-    //     })
+            toTransfer = ethers.utils.parseEther("990");
+            await mockDai.connect(bob).approve(owlFarm.address, toTransfer);
+            await owlFarm.connect(bob).stake(toTransfer);
 
-    //     it("should update yield balance when unstaked", async() => {
-    //         await time.increase(86400)
-    //         await owlFarm.connect(alice).unstake(ethers.utils.parseEther("5"))
+            toTransfer = ethers.utils.parseEther("10");
+            await mockDai.connect(alice).approve(owlFarm.address, toTransfer);
+            await owlFarm.connect(alice).stake(toTransfer);
+        })
 
-    //         res = await owlFarm.pmknBalance(alice.address)
-    //         expect(Number(ethers.utils.formatEther(res)))
-    //             .to.be.approximately(10, .001)
-    //     })
+        it("should return correct yield time", async() => {
+            let timeStart = await owlFarm.startTime(alice.address);
+            expect(Number(timeStart)).to.be.greaterThan(0);
 
-    // })
+            // Fast-forward time
+            await time.increase(86400);
+
+            expect(await owlFarm.calculateYieldTime(alice.address)).to.eq((86400));
+        })
+
+        it("should compound rewards correctly", async() => { 
+            await time.increase(86400);
+
+            const base = 5e-7;
+            const depletePerc = Math.pow(base + 1, 86400) - 1;
+
+            const lpStanking = ethers.utils.formatEther( await owlFarm.stakingBalance(alice.address) );
+            const lpBalance = ethers.utils.formatEther( await owlFarm.totalLpBalance() );
+            const lpShare = lpStanking / lpBalance;
+
+            const rewardPerc = lpShare * depletePerc;
+            const dueYield = rewardPerc * ethers.utils.formatEther( await owlFarm.totalOwlBalance() );
+
+            const calculatedYield = Number(ethers.utils.formatEther(await owlFarm.calculateYieldTotal(alice.address))).toFixed(6);
+
+            expect(calculatedYield).to.eq(dueYield.toFixed(6));
+        })
+
+        it("should match wallet token balance with contract supply decreased", async() => {
+            await time.increase(86400);
+
+            const tokenSupplyBefore =  ethers.utils.formatEther(await owlToken.balanceOf(owlFarm.address));
+            await owlFarm.connect(alice).withdrawYield();
+            const owl =  await owlToken.balanceOf(alice.address);
+            const tokenSupplyAfter =  ethers.utils.formatEther(await owlToken.balanceOf(owlFarm.address));  
+            
+            const formattedOwl = Number(ethers.utils.formatEther(owl)).toFixed(6);
+            const formattedDiff = (tokenSupplyBefore - tokenSupplyAfter).toFixed(6);
+
+            expect( formattedOwl ).to.eq( formattedDiff );
+        })
+
+        it("should retrieve correct token amount", async() => {
+            await time.increase(86400);
+
+            const owl = await executeAndGoBack(async () => {
+                await owlFarm.connect(alice).withdrawYield();
+                return await owlToken.balanceOf(alice.address);
+            });
+
+            // so we can calculate yield based on the real elapsed timestamp
+            const calculatedYield = await owlFarm.calculateYieldTotal(alice.address);
+
+            expect( owl ).to.eq( calculatedYield );
+        })
+
+        it("should update yield balance when unstaked", async() => {
+            await time.increase(86400);
+
+            const unrealizedBalance = await executeAndGoBack(async () => {
+                await owlFarm.connect(alice).unstake(ethers.utils.parseEther("5"));
+                return await owlFarm.unrealizedBalance(alice.address);
+            });
+
+            const calculatedYield = await owlFarm.calculateYieldTotal(alice.address);
+
+            expect( unrealizedBalance ).to.eq( calculatedYield );
+        })
+
+    })
 })

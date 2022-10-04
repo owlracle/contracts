@@ -13,7 +13,7 @@ async function main() {
   console.log(`OwlToken address: ${ owlToken.address }`);
 
   const OwlFarm = await hre.ethers.getContractFactory("OwlFarm");
-  const owlFarm = await OwlFarm.deploy(mockDai.address, owlToken.address);
+  const owlFarm = await OwlFarm.deploy(mockDai.address, owlToken.address, 5e11);
   console.log(`OwlFarm address: ${ owlFarm.address }`)
 
   await owlToken.transferOwnership(owlFarm.address);
