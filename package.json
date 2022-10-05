@@ -14,6 +14,7 @@
   "dependencies": {
     "@nomicfoundation/hardhat-network-helpers": "^1.0.6",
     "@prb/math": "^2.5.0",
+    "dotenv": "^16.0.3",
     "hardhat": "^2.11.2"
   },
   "devDependencies": {

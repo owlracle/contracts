@@ -29,6 +29,7 @@ describe("OwlFarm", () => {
         ]);
         owlToken = await OwlToken.deploy(totalOwl);
 
+        // owner has all the OWL, transfer some to bob
         await owlToken.connect(owner).approve(owner.address, totalOwl);
         await owlToken.transferFrom(owner.address, bob.address, daiAmount);
 

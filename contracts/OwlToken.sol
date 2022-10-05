@@ -7,7 +7,7 @@ contract OwlToken is ERC20 {
 
     constructor(
         uint256 _totalAmount
-    ) ERC20("Owlracle Token", "OWL") {
+    ) ERC20("Owlracle", "OWL") {
         _mint(msg.sender, _totalAmount);
     }
 
