@@ -1,7 +1,4 @@
-const { ethers } = require("hardhat");
-require('dotenv').config();
-
-async function main() {
+const callback = async (args, { ethers }) => {
     const [ user ] = await ethers.getSigners();
     console.log(`I am ${ user.address }`);
 
@@ -26,7 +23,8 @@ async function main() {
     console.log('Rewards ready to be taken: ', ethers.utils.formatEther(rewards));
 }
 
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});
+module.exports = {
+    name: 'info',
+    description: 'Get info about LP, token and Farm standings.',
+    callback: callback,
+};

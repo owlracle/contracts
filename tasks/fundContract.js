@@ -1,7 +1,4 @@
-const { ethers } = require("hardhat");
-require('dotenv').config();
-
-async function main() {
+const callback = async (args, { ethers }) => {
     const OWLToFund = 90600;
 
     const [ user ] = await ethers.getSigners();
@@ -20,7 +17,8 @@ async function main() {
     console.log('Added funds to contract:', ethers.utils.formatEther(toFund));
 }
 
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});
+module.exports = {
+    name: 'fund',
+    description: 'Add OWL token into contract to serve as rewards.',
+    callback: callback,
+};

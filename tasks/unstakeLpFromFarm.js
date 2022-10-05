@@ -1,7 +1,4 @@
-const { ethers } = require("hardhat");
-require('dotenv').config();
-
-async function main() {
+const callback = async (args, { ethers }) => {
     const [ user ] = await ethers.getSigners();
     console.log(`I am ${ user.address }`);
 
@@ -15,7 +12,8 @@ async function main() {
     console.log('Unstaked: ', ethers.utils.formatEther(lpBalance));
 }
 
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});
+module.exports = {
+    name: 'unstake',
+    description: 'Unstake LP from farm.',
+    callback: callback,
+};
