@@ -65,7 +65,7 @@ contract OwlFarm is Ownable {
 
     function unstake(uint256 _amount) public {
         require(
-            isStaking[msg.sender] = true &&
+            isStaking[msg.sender] == true &&
             stakingBalance[msg.sender] >= _amount, 
             "Nothing to unstake"
         );
@@ -84,7 +84,7 @@ contract OwlFarm is Ownable {
     }
 
     function calculateYieldTime(address _user) public view returns(uint256){
-        require( isStaking[msg.sender] = true, "You are not staking" );
+        require( isStaking[msg.sender] == true, "You are not staking" );
 
         uint256 end = block.timestamp;
         uint256 totalTime = end - startTime[_user];
@@ -100,7 +100,7 @@ contract OwlFarm is Ownable {
     }
 
     function calculateYieldTotal(address _user) public view returns(uint256) {
-        require( isStaking[msg.sender] = true, "You are not staking" );
+        require( isStaking[msg.sender] == true, "You are not staking" );
 
         uint256 formattedYield = yield + 1e18;
         uint256 time = PRBMathUD60x18.fromUint( calculateYieldTime(_user) );
