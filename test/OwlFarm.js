@@ -155,7 +155,7 @@ describe("OwlFarm", () => {
             // Fast-forward time
             await time.increase(86400);
 
-            expect(await owlFarm.calculateYieldTime(alice.address)).to.eq((86400));
+            expect(await owlFarm.calculateYieldTime(alice.address)).to.eq(86400);
         })
 
         it("should compound rewards correctly", async() => { 
