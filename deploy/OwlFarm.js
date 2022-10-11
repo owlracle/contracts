@@ -1,20 +1,16 @@
 const { ethers } = require("hardhat");
 require('dotenv').config();
 
-async function main() {
+module.exports = async input => {
     const [deployer] = await ethers.getSigners();
     console.log(`Deploying contracts with ${deployer.address}`);
 
     const OWLUSDCLPAddress = process.env.GOERLI_LP_ADDRESS;
-    const OWLAddress = process.env.GOERLI_OWL_ADDRESS;
+    const OWLAddress = input.owlTokenAddress;
 
     const OwlFarm = await ethers.getContractFactory("OwlFarm");
     const owlFarm = await OwlFarm.deploy(OWLUSDCLPAddress, OWLAddress, 5e11);
-    console.log(`OwlFarm address: ${owlFarm.address}`)
+    console.log(`OwlFarm address: ${owlFarm.address}`);
 
+    return { owlFarmAddress: owlFarm.address };
 }
-
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});

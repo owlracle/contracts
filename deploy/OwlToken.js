@@ -1,6 +1,6 @@
 const { ethers } = require("hardhat");
 
-async function main() {
+module.exports = async () => {
     const [ deployer ] = await ethers.getSigners();
     console.log(`Deploying contracts with ${ deployer.address }`);
 
@@ -9,9 +9,5 @@ async function main() {
     const owlToken = await OwlToken.deploy(totalOwl);
     console.log(`OwlToken address: ${ owlToken.address }`);
     // copy the contract address to env GOERLI_OWL_ADDRESS
+    return { owlTokenAddress: owlToken.address };
 }
-
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});

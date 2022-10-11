@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "main": "index.js",
   "scripts": {
-    "deploy": "npx hardhat run --network localhost deploy/OwlFarm.js",
+    "deploy": "npx hardhat run deploy/deployer.js",
     "node": "npx hardhat node",
     "test": "npx hardhat test test/OwlFarm.js"
   },
