@@ -26,7 +26,7 @@ describe("OwlFarm", () => {
         await Promise.all([
             mockDai.mint(owner.address, daiAmount),
             mockDai.mint(alice.address, daiAmount),
-            mockDai.mint(bob.address, daiAmount),
+            mockDai.mint(bob.address, ethers.utils.parseEther((100000000).toString())),
         ]);
         owlToken = await OwlToken.deploy(totalOwl);
 
@@ -76,7 +76,7 @@ describe("OwlFarm", () => {
         it("should revert with not enough funds", async() => {
             let toTransfer = ethers.utils.parseEther("1000000");
             await mockDai.approve(owlFarm.address, toTransfer);
-            await expect(owlFarm.connect(bob).stake(toTransfer)).to.be.revertedWith("You cannot stake zero tokens");
+            await expect(owlFarm.connect(alice).stake(toTransfer)).to.be.revertedWith("You cannot stake zero tokens");
         })
     })
 
@@ -222,6 +222,28 @@ describe("OwlFarm", () => {
             const calculatedYield = await owlFarm.calculateYieldTotal(alice.address);
 
             expect( unrealizedBalance ).to.eq( calculatedYield );
+        })
+
+        it("staking rewards should not be affected by others entering/leaving", async() => {
+            await time.increase(86400);
+
+            // retrieve rewards after 1 day of staking
+            const owlAlone = await executeAndGoBack(async () => {
+                await owlFarm.connect(alice).withdrawYield();
+                return await owlToken.balanceOf(alice.address);
+            });
+
+            // a whale deposites in the mean time
+            const toTransfer = ethers.utils.parseEther("1000000");
+            await mockDai.connect(bob).approve(owlFarm.address, toTransfer);
+            await owlFarm.connect(bob).stake(toTransfer);
+
+            // withdraw after the whale deposited
+            await owlFarm.connect(alice).withdrawYield();
+            const owlAfterWhale = await owlToken.balanceOf(alice.address);
+
+
+            expect( owlAlone ).to.eq( owlAfterWhale );
         })
 
     })
