@@ -12,11 +12,12 @@ describe("OwlFarm", () => {
     let owlFarm;
     let owlToken;
     let mockDai;
+    let startingState;
 
     const daiAmount = ethers.utils.parseEther("25000");
     const totalOwl = ethers.utils.parseEther("1000000");
 
-    beforeEach(async() => {
+    before(async() => {
         const OwlFarm = await ethers.getContractFactory("OwlFarm");
         const OwlToken = await ethers.getContractFactory("OwlToken");
         const MockDai = await ethers.getContractFactory("MockERC20");
@@ -34,6 +35,12 @@ describe("OwlFarm", () => {
         await owlToken.transferFrom(owner.address, bob.address, daiAmount);
 
         owlFarm = await OwlFarm.deploy(mockDai.address, owlToken.address, 5e11);
+
+        startingState = await takeSnapshot();
+    })
+
+    beforeEach(async() => {
+        await startingState.restore();
     })
 
     describe("Init", async() => {
