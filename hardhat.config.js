@@ -1,7 +1,6 @@
 const { task } = require("hardhat/config");
 
 require("@nomicfoundation/hardhat-toolbox");
-require('dotenv').config();
 
 // tasks file
 [
@@ -18,9 +17,15 @@ require('dotenv').config();
 module.exports = {
     solidity: "0.8.9",
     networks: {
-        goerli: {
+        hardhat: {
+            forking: {
+                url: process.env.MAINNET_URL,
+                blockNumber: 17746148,
+            }
+        },
+        sepolia: {
             url: process.env.NETWORK_URL,
-            accounts: [`0x${process.env.PRIVATE_KEY}`]
+            accounts: [`0x${process.env.DEV_PRIVATE_KEY}`]
         }
     }
 };

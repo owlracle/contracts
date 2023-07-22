@@ -4,7 +4,6 @@ let returnedVars = {};
 
 const scripts = ([
     'OwlToken',
-    'OwlFarm',
 ]).map(e => require(`./${e}`));
 
 (async () => {

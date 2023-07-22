@@ -1,0 +1,12 @@
+version: '3'
+services:
+    hh:
+        build: .
+        volumes:
+            - .:/app
+            - node_modules:/app/node_modules
+        env_file:
+            - .env
+        command: npm start
+volumes:
+    node_modules:
