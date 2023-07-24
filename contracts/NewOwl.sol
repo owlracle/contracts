@@ -113,42 +113,35 @@ contract NewOwl is Context, IERC20, Ownable {
     mapping (address => mapping (address => uint256)) private _allowances;
     mapping (address => bool) private _isExcludedFromFee;
     mapping(address => uint256) private _holderLastTransferTimestamp;
-    bool public transferDelayEnabled = true;
     address payable private _taxWallet;
 
-    uint256 private _transferTax=1;
-    uint256 private _preventSwapBefore=25;
+    uint256 private _transferTax = 1;
+    uint256 private _burnFee = 50;
+    uint256 private _maxWalletSizeRate = 2;
 
     uint8 private constant _decimals = 18;
-    uint256 private constant _tTotal = 1000000 * 10**_decimals;
+
+    // 1M total supply
+    uint256 private _totalSupply = 1000000 * 10**_decimals;
+
+    uint256 private _burnedTokens = 0;
     string private constant _name = unicode"Owlracle";
     string private constant _symbol = unicode"OWL";
+
     // max 2% of total supply per wallet
-    uint256 public _maxWalletSize = _tTotal.mul(2).div(100);
-    // minimum amount this contract must hold before swapping tax tokens for eth (default 1% of total supply)
-    uint256 public _taxSwapThreshold= _tTotal.mul(1).div(100);
-    uint256 public _maxTaxSwap= 13000 * 10**_decimals;
+    uint256 private _maxWalletSize = _totalSupply.mul(_maxWalletSizeRate).div(100);
 
     IUniswapV2Router02 private uniswapV2Router;
     address private uniswapV2Pair;
-    bool private tradingOpen;
-    bool private inSwap = false;
-    bool private swapEnabled = false;
-
-    modifier lockTheSwap {
-        inSwap = true;
-        _;
-        inSwap = false;
-    }
 
     constructor () {
         _taxWallet = payable(_msgSender());
-        _balances[_msgSender()] = _tTotal;
+        _balances[_msgSender()] = _totalSupply;
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
         _isExcludedFromFee[_taxWallet] = true;
 
-        emit Transfer(address(0), _msgSender(), _tTotal);
+        emit Transfer(address(0), _msgSender(), _totalSupply);
     }
 
     function name() public pure returns (string memory) {
@@ -163,8 +156,8 @@ contract NewOwl is Context, IERC20, Ownable {
         return _decimals;
     }
 
-    function totalSupply() public pure override returns (uint256) {
-        return _tTotal;
+    function totalSupply() public view override returns (uint256) {
+        return _totalSupply;
     }
 
     function balanceOf(address account) public view override returns (uint256) {
@@ -183,6 +176,14 @@ contract NewOwl is Context, IERC20, Ownable {
     function approve(address spender, uint256 amount) public override returns (bool) {
         _approve(_msgSender(), spender, amount);
         return true;
+    }
+
+    function maxWalletSize() public view returns (uint256) {
+        return _maxWalletSize;
+    }
+
+    function burnedTokens() public view returns (uint256) {
+        return _burnedTokens;
     }
 
     function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
@@ -204,14 +205,14 @@ contract NewOwl is Context, IERC20, Ownable {
         require(amount > 0, "Transfer amount must be greater than zero");
         require(balanceOf(from) >= amount, "Insufficient balance");
         
-        uint256 taxAmount=0;
-        if (from != owner() && to != owner()) {
+        uint256 feeAmount=0;
+        if (!_isExcludedFromFee[from] && !_isExcludedFromFee[from]) {
             // calculate tax amount
-            taxAmount = amount.mul(_transferTax).div(100);
+            feeAmount = amount.mul(_transferTax).div(100);
 
             // do not allow more than 1 buy from the same wallet per block
             // this may help difficulting front-running bots
-            if (transferDelayEnabled && to != address(uniswapV2Router) && to != address(uniswapV2Pair)) {
+            if (to != address(uniswapV2Router) && to != address(uniswapV2Pair)) {
                 require(_holderLastTransferTimestamp[tx.origin] < block.number, "Only one purchase per block allowed.");
                 _holderLastTransferTimestamp[tx.origin] = block.number;
             }
@@ -220,85 +221,30 @@ contract NewOwl is Context, IERC20, Ownable {
             if (to != address(uniswapV2Router) && to != address(uniswapV2Pair) && ! _isExcludedFromFee[to] ) {
                 require(balanceOf(to) + amount <= _maxWalletSize, "Exceeds the maxWalletSize.");
             }
-
-            if (from == uniswapV2Pair && to != address(uniswapV2Router) && ! _isExcludedFromFee[to] ) {
-                // do not allow to buy beyond the maxTxAmount
-                // prevent wallet size from exceeding the maxWalletSize
-            }
-
-            // swap tokens from this contract for eth, then send to tax wallet
-            uint256 contractTokenBalance = balanceOf(address(this));
-            if (!inSwap && to == uniswapV2Pair && swapEnabled && contractTokenBalance > _taxSwapThreshold) {
-                swapTokensForEth(min(amount,min(contractTokenBalance,_maxTaxSwap)));
-                uint256 contractETHBalance = address(this).balance;
-                if(contractETHBalance > 0.05 ether) {
-                    sendETHToFee(address(this).balance);
-                }
-            }
         }
 
-        if(taxAmount > 0){
-          _balances[address(this)]=_balances[address(this)].add(taxAmount);
-          emit Transfer(from, address(this),taxAmount);
+        if(feeAmount > 0){
+            _payFee(feeAmount);
         }
 
         _balances[from]=_balances[from].sub(amount);
-        _balances[to]=_balances[to].add(amount.sub(taxAmount));
-        emit Transfer(from, to, amount.sub(taxAmount));
+        _balances[to]=_balances[to].add(amount.sub(feeAmount));
+        emit Transfer(from, to, amount.sub(feeAmount));
     }
 
+    function _payFee(uint256 amount) private {
+        // burn designated amount
+        uint256 burnAmount = amount.mul(_burnFee).div(100);
+        _totalSupply = _totalSupply.sub(burnAmount);
+        _burnedTokens = _burnedTokens.add(burnAmount);
 
-    function min(uint256 a, uint256 b) private pure returns (uint256){
-      return (a>b)?b:a;
-    }
+        // update max wallet size
+        _maxWalletSize = _totalSupply.mul(_maxWalletSizeRate).div(100);
 
-    function swapTokensForEth(uint256 tokenAmount) private lockTheSwap {
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = uniswapV2Router.WETH();
-        _approve(address(this), address(uniswapV2Router), tokenAmount);
-        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount,
-            0,
-            path,
-            address(this),
-            block.timestamp
-        );
-    }
-
-    function removeLimits() external onlyOwner{
-        _maxWalletSize=_tTotal;
-        transferDelayEnabled=false;
-    }
-
-    function sendETHToFee(uint256 amount) private {
-        _taxWallet.transfer(amount);
-    }
-
-
-    function openTrading() external onlyOwner() {
-        require(!tradingOpen,"trading is already open");
-        uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-        _approve(address(this), address(uniswapV2Router), _tTotal);
-        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), uniswapV2Router.WETH());
-        uniswapV2Router.addLiquidityETH{value: address(this).balance}(address(this), balanceOf(address(this)), 0, 0, owner(), block.timestamp);
-        IERC20(uniswapV2Pair).approve(address(uniswapV2Router), type(uint).max);
-        swapEnabled = true;
-        tradingOpen = true;
+        // send the rest to tax wallet
+        _balances[_taxWallet] = _balances[_taxWallet].add(amount.sub(burnAmount));
+        emit Transfer(_msgSender(), _taxWallet, amount.sub(burnAmount));
     }
 
     receive() external payable {}
-
-    // this will allow tax wallet to manually swap tokens and receive eth
-    function manualSwap() external {
-        require(_msgSender()==_taxWallet);
-        uint256 tokenBalance=balanceOf(address(this));
-        if(tokenBalance>0){
-            swapTokensForEth(tokenBalance);
-        }
-        uint256 ethBalance=address(this).balance;
-        if(ethBalance>0){
-            sendETHToFee(ethBalance);
-        }
-    }
 }
