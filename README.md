@@ -1,3 +1,3 @@
 # Owlracle Contracts
 
-Contracts for OWL token and OwlFarm.
+Contracts for Owlracle. Just the OWL token for now.
