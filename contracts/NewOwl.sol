@@ -92,11 +92,11 @@ contract NewOwl is Context, IERC20, Ownable {
     address payable private _taxWallet;
 
     // 1% transfer tax
-    uint256 private _transferTax = 1;
+    uint256 private constant _transferTax = 1;
     // 50% of tax is burned
-    uint256 private _burnFee = 50;
+    uint256 private constant _burnFee = 50;
     // max 2% of total supply per wallet
-    uint256 private _maxWalletSizeRate = 2;
+    uint256 private constant _maxWalletSizeRate = 2;
 
     uint8 private constant _decimals = 18;
     string private constant _name = unicode"Owlracle";
@@ -169,8 +169,15 @@ contract NewOwl is Context, IERC20, Ownable {
         _isExcludedFromFee[account] = true;
     }
 
+    // this needs to be called for the liquidity pool
     function excludeFromMaxWalletSize(address account) public onlyOwner {
         _isExcludedFromMaxWalletSize[account] = true;
+    }
+
+    function setTaxWallet(address payable account) public onlyOwner {
+        _isExcludedFromFee[_taxWallet] = false;
+        _taxWallet = account;
+        _isExcludedFromFee[_taxWallet] = true;
     }
 
     function _approve(address owner, address spender, uint256 amount) private {
