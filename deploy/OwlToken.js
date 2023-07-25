@@ -7,7 +7,7 @@ module.exports = async () => {
     const [ deployer, user1 ] = await ethers.getSigners();
     console.log(`Deploying contracts with ${ deployer.address }`);
 
-    const OwlToken = await ethers.getContractFactory("NewOwl");
+    const OwlToken = await ethers.getContractFactory("OwlToken");
     const owlToken = await OwlToken.deploy();
     await owlToken.deployed();
 

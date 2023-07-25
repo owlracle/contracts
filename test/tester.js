@@ -1,5 +1,6 @@
 let returnedVars = {};
 
 const scripts = ([
-    'NewOwl',
+    'OwlToken',
+    'ClaimOwl',
 ]).map(e => require(`./${e}`));

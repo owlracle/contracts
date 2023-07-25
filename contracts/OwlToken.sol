@@ -83,7 +83,7 @@ contract Ownable is Context {
 
 }
 
-contract NewOwl is Context, IERC20, Ownable {
+contract OwlToken is Context, IERC20, Ownable {
     using SafeMath for uint256;
     mapping (address => uint256) private _balances;
     mapping (address => mapping (address => uint256)) private _allowances;

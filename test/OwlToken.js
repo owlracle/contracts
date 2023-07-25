@@ -3,7 +3,7 @@ const { expect } = require('chai');
 const { takeSnapshot } = require('@nomicfoundation/hardhat-network-helpers');
 
 
-describe('NewOwl', () => {
+describe('OwlToken', () => {
     
     let owner;
     let user1;
@@ -14,7 +14,7 @@ describe('NewOwl', () => {
     const uniswapV2FactoryAddress = '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f';
 
     before(async() => {
-        const OwlToken = await ethers.getContractFactory('NewOwl');
+        const OwlToken = await ethers.getContractFactory('OwlToken');
         [ owner, user1, user2 ] = await ethers.getSigners();
         owlToken = await OwlToken.deploy();
 

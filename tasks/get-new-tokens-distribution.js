@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 async function callback() {
-    const OwlToken = await ethers.getContractFactory('NewOwl');
+    const OwlToken = await ethers.getContractFactory('OwlToken');
     let owlToken = await OwlToken.deploy();
 
     let holders = [];
