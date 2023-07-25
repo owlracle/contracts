@@ -4,10 +4,7 @@ require("@nomicfoundation/hardhat-toolbox");
 
 // tasks file
 [
-    'fundContract',
-    'getFarmInfo',
-    'stakeLpIntoFarm',
-    'unstakeLpFromFarm'
+    'get-new-tokens-distribution'
 ]
 .map(e => require(`./tasks/${e}`))
 .forEach(e => task(e.name, e.description, e.callback));

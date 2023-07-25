@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "main": "index.js",
   "scripts": {
-    "start": "npx hardhat node",
+    "start": "npx hardhat",
     "compile": "npx hardhat compile",
     "deploy": "npx hardhat run deploy/deployer.js --network $NETWORK",
     "test": "npx hardhat test test/tester.js"
@@ -16,6 +16,9 @@
     "@nomicfoundation/hardhat-toolbox": "^2.0.0",
     "@openzeppelin/contracts": "^4.9.2",
     "@prb/math": "^2.5.0",
-    "hardhat": "^2.11.2"
+    "hardhat": "^2.11.2",
+    "js-merkle": "^0.1.6",
+    "keccak256": "^1.0.6",
+    "merkletreejs": "^0.3.10"
   }
 }

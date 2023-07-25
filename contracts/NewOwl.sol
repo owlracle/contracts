@@ -206,7 +206,7 @@ contract NewOwl is Context, IERC20, Ownable {
         require(balanceOf(from) >= amount, "Insufficient balance");
         
         uint256 feeAmount=0;
-        if (!_isExcludedFromFee[from] && !_isExcludedFromFee[from]) {
+        if (!_isExcludedFromFee[from] && !_isExcludedFromFee[to]) {
             // calculate tax amount
             feeAmount = amount.mul(_transferTax).div(100);
 

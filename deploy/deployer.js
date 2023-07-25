@@ -3,7 +3,7 @@ const fs = require('fs');
 let returnedVars = {};
 
 const scripts = ([
-    'OwlToken',
+    'NewOwl',
 ]).map(e => require(`./${e}`));
 
 (async () => {
