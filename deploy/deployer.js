@@ -1,18 +1,20 @@
-const fs = require('fs');
-
 let returnedVars = {};
 
 const scripts = ([
     'NewOwl',
+    'addLiqudity',
+    'swap',
 ]).map(e => require(`./${e}`));
 
-(async () => {
+async function main() {
     for (let i in scripts) {
         returnedVars = {
             ...returnedVars,
             ...await scripts[i](returnedVars),
         };
     }
-
-    fs.writeFileSync('./deploy/deployinfo.json', JSON.stringify(returnedVars));
-})();
+}
+main().then(() => process.exit(0)).catch(error => {
+    console.error(error);
+    process.exit(1);
+});

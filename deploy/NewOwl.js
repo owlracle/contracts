@@ -1,12 +1,21 @@
 const { ethers } = require("hardhat");
 
 module.exports = async () => {
-    const [ deployer ] = await ethers.getSigners();
+
+    // deploy token
+
+    const [ deployer, user1 ] = await ethers.getSigners();
     console.log(`Deploying contracts with ${ deployer.address }`);
 
     const OwlToken = await ethers.getContractFactory("NewOwl");
     const owlToken = await OwlToken.deploy();
-    // console.log(owlToken)
+    await owlToken.deployed();
+
     console.log(`OwlToken address: ${ owlToken.address }`);
-    return { owlTokenAddress: owlToken.address };
+    
+    return {
+        deployer,
+        user1,
+        owlToken,
+    }
 }
