@@ -52,7 +52,7 @@ describe('ClaimOwl', () => {
     describe('Deployment', async() => {
         it('should initialize', async() => {
             expect(await claimOwl).to.be.ok;
-            expect(await claimOwl.getMerkleRoot()).to.equal(tree.getHexRoot());
+            expect(await claimOwl.getRoot()).to.equal(tree.getHexRoot());
         });
     })
 
@@ -85,18 +85,20 @@ describe('ClaimOwl', () => {
 
         let amountToFund;
         let user;
+        let leaf;
+        let proof;
         
         beforeEach(async() => {
-            user = holders[0];
-
             const totalSupply = await owlToken.totalSupply();
             amountToFund = totalSupply.div(2);
             await owlToken.transfer(claimOwl.address, amountToFund);
+
+            user = holders[0];
+            leaf = keccak256(ethers.utils.solidityPack(["address", "uint256"], [user.address, user.amount]));
+            proof = tree.getProof(leaf).map(p => p.data);
         });
 
         it('should be able to claim tokens (single user)', async() => {
-            const leaf = keccak256(ethers.utils.solidityPack(["address", "uint256"], [user.address, user.amount]));
-            const proof = tree.getProof(leaf).map(p => p.data);
             const verified = tree.verify(proof, leaf, tree.getRoot());
             // console.log('Verified:', verified)
 
@@ -117,11 +119,51 @@ describe('ClaimOwl', () => {
         });
 
         it('should not be able to claim tokens (single user) with wrong proof', async() => {
-            const leaf = keccak256(ethers.utils.solidityPack([ "address", "uint256" ], [ user.address, user.amount ]));
-            const proof = tree.getProof(leaf).map(p => p.data);
-            
             let temperedAmount = ethers.BigNumber.from(user.amount).add(1);
-            await expect(claimOwl.claim(user.address, temperedAmount, proof)).to.be.revertedWith('ClaimOwl: Invalid proof.');
+            await expect(claimOwl.claim(user.address, temperedAmount, proof)).to.be.revertedWith('ClaimOwl: Invalid proof');
+        });
+
+        it('should not be able to claim tokens twice', async() => {
+            await claimOwl.claim(user.address, user.amount, proof);
+            await expect(claimOwl.claim(user.address, user.amount, proof)).to.be.revertedWith('ClaimOwl: Already claimed');
+        });
+
+        it('should not be able to claim tokens when contract has not enough funds', async() => {
+            // drain contract
+            await claimOwl.withdraw();
+
+            await expect(claimOwl.claim(user.address, user.amount, proof)).to.be.revertedWith('ClaimOwl: Not enough funds');
+        });
+
+        it('should be able to claim tokens for ALL holders', async() => {
+
+            let amountSum = ethers.BigNumber.from(0);
+
+            for (let i in holders) {
+                const user = holders[i];
+
+                const leaf = keccak256(ethers.utils.solidityPack(["address", "uint256"], [user.address, user.amount]));
+                const proof = tree.getProof(leaf).map(p => p.data);
+                const verified = tree.verify(proof, leaf, tree.getRoot());
+                // console.log('Verified:', verified)
+    
+                // this is the check before passing the proof to the contract
+                expect(verified).to.be.true;
+                
+                await claimOwl.claim(user.address, user.amount, proof);
+    
+                // user got his funds
+                const userBalance = await owlToken.balanceOf(user.address);
+                expect(userBalance).to.equal(user.amount);
+                // console.log(`user ${ user.address } balance: `, ethers.utils.formatEther(userBalance));
+    
+                amountSum = amountSum.add(user.amount);
+            }
+            
+            // contract should have funds drained
+            const contractBalance = await owlToken.balanceOf(claimOwl.address);
+            expect(contractBalance).to.equal(amountToFund.sub(amountSum));
+            // console.log('contractBalance', ethers.utils.formatEther(contractBalance));
         });
 
     });

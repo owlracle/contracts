@@ -45,7 +45,7 @@ describe('OwlToken', () => {
 
         it('should not transfer tokens if sender does not have enough', async() => {
             const amount = ethers.utils.parseEther('10');
-            await expect(owlToken.connect(user1).transfer(owner.address, amount)).to.be.revertedWith('Insufficient balance');
+            await expect(owlToken.connect(user1).transfer(owner.address, amount)).to.be.revertedWith('OwlToken: Insufficient balance');
         });
 
         it('should transfer right amount of tokens from owner', async() => {
@@ -95,7 +95,7 @@ describe('OwlToken', () => {
 
             await expect(
                 owlToken.connect(user1).transfer(user2.address, beyondMaxAmount)
-            ).to.be.revertedWith('Exceeds the maxWalletSize.');
+            ).to.be.revertedWith('OwlToken: Exceeds the maxWalletSize');
         });
 
         it('should not allow wallet holding more than 2% of total supply (multiple transfers)', async() => {
@@ -111,7 +111,7 @@ describe('OwlToken', () => {
 
             await expect(
                 owlToken.connect(user1).transfer(user2.address, finalAmount)
-            ).to.be.revertedWith('Exceeds the maxWalletSize.');
+            ).to.be.revertedWith('OwlToken: Exceeds the maxWalletSize');
         });
         
     });

@@ -1,6 +1,4 @@
-let returnedVars = {};
-
-const scripts = ([
-    'OwlToken',
+[
+    // 'OwlToken',
     'ClaimOwl',
-]).map(e => require(`./${e}`));
+].map(e => require(`./${e}`));

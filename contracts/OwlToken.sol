@@ -190,7 +190,7 @@ contract OwlToken is Context, IERC20, Ownable {
     function _transfer(address from, address to, uint256 amount) private {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
-        require(balanceOf(from) >= amount, "Insufficient balance");
+        require(balanceOf(from) >= amount, "OwlToken: Insufficient balance");
         
         uint256 feeAmount=0;
         if (!_isExcludedFromFee[from] && !_isExcludedFromFee[to]) {
@@ -199,7 +199,7 @@ contract OwlToken is Context, IERC20, Ownable {
 
             // a single wallet cannot hold more than _maxWalletSize
             if (!_isExcludedFromMaxWalletSize[to]) {
-                require(balanceOf(to) + amount <= _maxWalletSize, "Exceeds the maxWalletSize.");
+                require(balanceOf(to) + amount <= _maxWalletSize, "OwlToken: Exceeds the maxWalletSize");
             }
         }
 

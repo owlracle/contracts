@@ -85,7 +85,8 @@ contract ClaimOwl is Context, Ownable {
     address private _tokenAddress;
     bytes32 private _merkleRoot;
 
-    mapping(address => bool) private _claimedAddresses;
+    // keeps track of who has claimed
+    mapping(address => bool) private _isClaimed;
 
     constructor (
         address tokenAddress,
@@ -95,41 +96,36 @@ contract ClaimOwl is Context, Ownable {
         _merkleRoot = merkleRoot;
     }
 
-    // function setTokenAddress(address tokenAddress) external onlyOwner {
-    //     _tokenAddress = tokenAddress;
-    // }
-
-    // function setRoot(bytes32 merkleRoot) external onlyOwner {
-    //     _merkleRoot = merkleRoot;
-    // }
-
-    function getMerkleRoot() public view returns (bytes32) {
-        return _merkleRoot;
-    }
-
-    function claim(address account, uint256 amount, bytes32[] calldata proof) external {
-        require(!_claimedAddresses[account], 'ClaimOwl: Drop already claimed.');
-        require(verifyProof(account, amount, proof), 'ClaimOwl: Invalid proof.');
-
-        uint256 tokenBalance = IERC20(_tokenAddress).balanceOf(address(this));
-        require(tokenBalance >= amount, "ClaimOwl: Not enough tokens in contract");
-
-        _claimedAddresses[account] = true;
-        IERC20(_tokenAddress).transfer(account, amount);
-    }
-
-    function isClaimed(address account) public view returns (bool) {
-        return _claimedAddresses[account];
-    }
-
-    function verifyProof(address account, uint256 amount, bytes32[] calldata proof) public view returns (bool) {
-        bytes32 node = keccak256(abi.encodePacked(account, amount));
-        return MerkleProof.verify(proof, _merkleRoot, node);
-    }
-
+    // this function can be used to withdraw tokens back to the owner
     function withdraw() external onlyOwner {
         uint256 tokenBalance = IERC20(_tokenAddress).balanceOf(address(this));
         IERC20(_tokenAddress).transfer(owner(), tokenBalance);
+    }
+
+    function getRoot() public view returns (bytes32) {
+        return _merkleRoot;
+    }
+
+    // check if an address has claimed
+    function isClaimed(address account) public view returns (bool) {
+        return _isClaimed[account];
+    }
+
+    function claim(address account, uint256 amount, bytes32[] calldata proof) external {
+        require(!_isClaimed[account], 'ClaimOwl: Already claimed');
+        require(_verifyProof(account, amount, proof), 'ClaimOwl: Invalid proof');
+
+        uint256 tokenBalance = IERC20(_tokenAddress).balanceOf(address(this));
+        require(tokenBalance >= amount, "ClaimOwl: Not enough funds");
+
+        _isClaimed[account] = true;
+        IERC20(_tokenAddress).transfer(account, amount);
+    }
+
+    // this function is used to verify the proof before calling claim
+    function _verifyProof(address account, uint256 amount, bytes32[] calldata proof) private view returns (bool) {
+        bytes32 node = keccak256(abi.encodePacked(account, amount));
+        return MerkleProof.verify(proof, _merkleRoot, node);
     }
 
     receive() external payable {}
