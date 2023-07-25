@@ -147,6 +147,8 @@ describe('NewOwl', () => {
     
             const pairAddress = await uniswapV2Factory.getPair(owlToken.address, uniswapV2Router.WETH());
             uniswapV2Pair = await ethers.getContractAt('contracts/MockUniswapV2.sol:IUniswapV2Pair', pairAddress);
+
+            await owlToken.excludeFromMaxWalletSize(uniswapV2Pair.address);
         });
 
         it('should create pair successfully and provide liquidity', async() => {
@@ -190,6 +192,110 @@ describe('NewOwl', () => {
 
             // what user1 lost from taxes should match what tax wallet gained + burn
             expect(tax).to.equal(taxWalletTokenDiff.add(burnAmount));
+        });
+
+        it('should be able to sell tokens and get ETH', async() => {
+            // send some tokens to user1
+            const amountSwap = ethers.utils.parseEther('10000');
+            await owlToken.transfer(user1.address, amountSwap);
+
+            // user1 balance
+            let balanceToken = await owlToken.balanceOf(user1.address);
+            let balanceETH = await ethers.provider.getBalance(user1.address);
+            // console.log(`User1 balance: ${ethers.utils.formatEther(balanceToken)}/${ethers.utils.formatEther(balanceETH)}`);
+
+            // approve uniswap router
+            await owlToken.connect(user1).approve(uniswapV2RouterAddress, amountSwap);
+            await uniswapV2Router.connect(user1).swapExactTokensForETHSupportingFeeOnTransferTokens(
+                amountSwap,
+                0,
+                [ owlToken.address, uniswapV2Router.WETH() ],
+                user1.address,
+                Date.now() + 1000 * 60 * 10,
+            );
+
+            balanceToken = await owlToken.balanceOf(user1.address);
+            balanceETH = (await ethers.provider.getBalance(user1.address)).sub(balanceETH);
+            // console.log(`User1 balance: ${ethers.utils.formatEther(balanceToken)}/${ethers.utils.formatEther(balanceETH)}`);
+
+            // user1 balance should be 0 token and more than 0 ETH
+            expect(balanceToken).to.equal(0);
+            expect(balanceETH).to.be.gt(0);
+        });
+
+        it('should be able to swap in and out from multiple wallets', async() => {
+            let amountSwap = ethers.utils.parseEther('0.03');
+            
+            // get all signers except owner
+            const signers = (await ethers.getSigners()).slice(1);
+
+            for (let i in signers) {
+                let signer = signers[i];
+                // perform the swap
+                await uniswapV2Router.connect(signer).swapExactETHForTokensSupportingFeeOnTransferTokens(
+                    0,
+                    [ uniswapV2Router.WETH(), owlToken.address ],
+                    signer.address,
+                    Date.now() + 1000 * 60 * 10,
+                    { value: amountSwap }
+                );
+    
+                // increase 10%
+                let increase = amountSwap.mul(13).div(100);
+                amountSwap = amountSwap.add(increase);
+
+                const balance = await owlToken.balanceOf(signer.address);
+                // console.log(`Signer ${i} balance: ${ethers.utils.formatEther(balance)}. Amount swap: ${ethers.utils.formatEther(amountSwap)}`);
+
+                expect(balance).to.be.gt(0);
+            }
+
+            // // owner balance
+            // let ownerBalance = await owlToken.balanceOf(owner.address);
+            // console.log(`Owner balance: ${ethers.utils.formatEther(ownerBalance)}`);
+
+            // // pair balance
+            // let reserves = await uniswapV2Pair.getReserves();
+            // console.log(`Pair balance: ${ethers.utils.formatEther(reserves[0])} / ${ethers.utils.formatEther(reserves[1])}`);
+
+            // // total supply
+            // let totalSupply = await owlToken.totalSupply();
+            // console.log(`Total supply: ${ethers.utils.formatEther(totalSupply)}`);
+
+            // now all signers sell
+            for (let i in signers) {
+                let signer = signers[i];
+
+                let amountSwap = await owlToken.balanceOf(signer.address);
+
+                // perform the swap
+                await owlToken.connect(signer).approve(uniswapV2RouterAddress, amountSwap);
+                await uniswapV2Router.connect(signer).swapExactTokensForETHSupportingFeeOnTransferTokens(
+                    amountSwap,
+                    0,
+                    [ owlToken.address, uniswapV2Router.WETH() ],
+                    signer.address,
+                    Date.now() + 1000 * 60 * 10,
+                );
+    
+                // const balanceETH = await ethers.provider.getBalance(signer.address);
+                // console.log(`Signer ${i} balance ETH: ${ethers.utils.formatEther(balanceETH)}. Amount swap: ${ethers.utils.formatEther(amountSwap)}`);
+
+                let balanceToken = await owlToken.balanceOf(signer.address);
+                expect(balanceToken).to.equal(0);
+            }
+
+            // // owner balance
+            // ownerBalance = await owlToken.balanceOf(owner.address);
+            // console.log(`Owner balance: ${ethers.utils.formatEther(ownerBalance)}`);
+
+            // // pair balance
+            // reserves = await uniswapV2Pair.getReserves();
+            // console.log(`Pair balance: ${ethers.utils.formatEther(reserves[0])} / ${ethers.utils.formatEther(reserves[1])}`);
+
+            // // total supply
+            // totalSupply = await owlToken.totalSupply();
+            // console.log(`Total supply: ${ethers.utils.formatEther(totalSupply)}`);
         });
     });
 
