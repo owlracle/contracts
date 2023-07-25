@@ -83,56 +83,29 @@ contract Ownable is Context {
 
 }
 
-interface IUniswapV2Factory {
-    function createPair(address tokenA, address tokenB) external returns (address pair);
-}
-
-interface IUniswapV2Router02 {
-    function swapExactTokensForETHSupportingFeeOnTransferTokens(
-        uint amountIn,
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external;
-    function factory() external pure returns (address);
-    function WETH() external pure returns (address);
-    function addLiquidityETH(
-        address token,
-        uint amountTokenDesired,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
-}
-
 contract NewOwl is Context, IERC20, Ownable {
     using SafeMath for uint256;
     mapping (address => uint256) private _balances;
     mapping (address => mapping (address => uint256)) private _allowances;
     mapping (address => bool) private _isExcludedFromFee;
-    mapping(address => uint256) private _holderLastTransferTimestamp;
+    mapping (address => bool) private _isExcludedFromMaxWalletSize;
     address payable private _taxWallet;
 
+    // 1% transfer tax
     uint256 private _transferTax = 1;
+    // 50% of tax is burned
     uint256 private _burnFee = 50;
+    // max 2% of total supply per wallet
     uint256 private _maxWalletSizeRate = 2;
 
     uint8 private constant _decimals = 18;
-
-    // 1M total supply
-    uint256 private _totalSupply = 1000000 * 10**_decimals;
-
-    uint256 private _burnedTokens = 0;
     string private constant _name = unicode"Owlracle";
     string private constant _symbol = unicode"OWL";
 
-    // max 2% of total supply per wallet
+    // 1M total supply
+    uint256 private _totalSupply = 1000000 * 10**_decimals;
+    uint256 private _burnedTokens = 0;
     uint256 private _maxWalletSize = _totalSupply.mul(_maxWalletSizeRate).div(100);
-
-    IUniswapV2Router02 private uniswapV2Router;
-    address private uniswapV2Pair;
 
     constructor () {
         _taxWallet = payable(_msgSender());
@@ -192,6 +165,14 @@ contract NewOwl is Context, IERC20, Ownable {
         return true;
     }
 
+    function excludeFromFee(address account) public onlyOwner {
+        _isExcludedFromFee[account] = true;
+    }
+
+    function excludeFromMaxWalletSize(address account) public onlyOwner {
+        _isExcludedFromMaxWalletSize[account] = true;
+    }
+
     function _approve(address owner, address spender, uint256 amount) private {
         require(owner != address(0), "ERC20: approve from the zero address");
         require(spender != address(0), "ERC20: approve to the zero address");
@@ -202,7 +183,6 @@ contract NewOwl is Context, IERC20, Ownable {
     function _transfer(address from, address to, uint256 amount) private {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
-        require(amount > 0, "Transfer amount must be greater than zero");
         require(balanceOf(from) >= amount, "Insufficient balance");
         
         uint256 feeAmount=0;
@@ -210,15 +190,8 @@ contract NewOwl is Context, IERC20, Ownable {
             // calculate tax amount
             feeAmount = amount.mul(_transferTax).div(100);
 
-            // do not allow more than 1 buy from the same wallet per block
-            // this may help difficulting front-running bots
-            if (to != address(uniswapV2Router) && to != address(uniswapV2Pair)) {
-                require(_holderLastTransferTimestamp[tx.origin] < block.number, "Only one purchase per block allowed.");
-                _holderLastTransferTimestamp[tx.origin] = block.number;
-            }
-
             // a single wallet cannot hold more than _maxWalletSize
-            if (to != address(uniswapV2Router) && to != address(uniswapV2Pair) && ! _isExcludedFromFee[to] ) {
+            if (!_isExcludedFromMaxWalletSize[to]) {
                 require(balanceOf(to) + amount <= _maxWalletSize, "Exceeds the maxWalletSize.");
             }
         }
