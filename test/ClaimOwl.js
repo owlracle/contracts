@@ -14,10 +14,11 @@ describe('ClaimOwl', () => {
     let holders;
     let tree;
     let owner;
+    let user1;
 
     before(async() => {
 
-        [ owner ] = await ethers.getSigners();
+        [ owner, user1 ] = await ethers.getSigners();
 
         // deploy OwlToken
         const OwlToken = await ethers.getContractFactory('OwlToken');
@@ -77,6 +78,10 @@ describe('ClaimOwl', () => {
 
             expect(await owlToken.balanceOf(claimOwl.address)).to.equal(0);
             expect(await owlToken.balanceOf(owner.address)).to.equal(amountToFund.add(ownerStartingBalance));
+        });
+
+        it('should not withdraw funds if not owner', async() => {
+            await expect(claimOwl.connect(user1).withdraw()).to.be.revertedWith('Ownable: caller is not the owner');
         });
 
     });

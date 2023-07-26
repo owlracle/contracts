@@ -1,12 +1,19 @@
 version: '3'
 services:
-    hh:
+    hardhat:
         build: .
         volumes:
             - .:/app
             - node_modules:/app/node_modules
         env_file:
             - .env
-        command: npm start
+        command: "npm start"
+    slither:
+        image: trailofbits/eth-security-toolbox
+        volumes:
+            - .:/share
+            - node_modules:/share/node_modules
+        tty: true
+        # slither /share/contracts/Contract.sol --solc-remaps @=/share/node_modules/@
 volumes:
     node_modules:

@@ -1,6 +1,7 @@
 const { task } = require("hardhat/config");
 
 require("@nomicfoundation/hardhat-toolbox");
+require("@nomiclabs/hardhat-etherscan");
 
 // tasks file
 [
@@ -36,5 +37,8 @@ module.exports = {
             url: process.env.NETWORK_URL,
             accounts: [`0x${process.env.DEV_PRIVATE_KEY}`]
         }
-    }
+    },
+    etherscan: {
+        apiKey: process.env.ETHERSCAN_API_KEY
+    },
 };

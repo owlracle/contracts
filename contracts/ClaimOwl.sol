@@ -2,85 +2,14 @@
 
 pragma solidity 0.8.9;
 
-import "./MerkleProof.sol";
-
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-}
-
-library SafeMath {
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
-        require(c >= a, "SafeMath: addition overflow");
-        return c;
-    }
-
-    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-        return sub(a, b, "SafeMath: subtraction overflow");
-    }
-
-    function sub(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
-        require(b <= a, errorMessage);
-        uint256 c = a - b;
-        return c;
-    }
-
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-        if (a == 0) {
-            return 0;
-        }
-        uint256 c = a * b;
-        require(c / a == b, "SafeMath: multiplication overflow");
-        return c;
-    }
-
-    function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        return div(a, b, "SafeMath: division by zero");
-    }
-
-    function div(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
-        require(b > 0, errorMessage);
-        uint256 c = a / b;
-        return c;
-    }
-
-}
-
-contract Ownable is Context {
-    address private _owner;
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    constructor () {
-        address msgSender = _msgSender();
-        _owner = msgSender;
-        emit OwnershipTransferred(address(0), msgSender);
-    }
-
-    function owner() public view returns (address) {
-        return _owner;
-    }
-
-    modifier onlyOwner() {
-        require(_owner == _msgSender(), "Ownable: caller is not the owner");
-        _;
-    }
-
-    function renounceOwnership() public virtual onlyOwner {
-        emit OwnershipTransferred(_owner, address(0));
-        _owner = address(0);
-    }
-
-}
-
-interface IERC20 {
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-}
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ClaimOwl is Context, Ownable {
-    using SafeMath for uint256;
+    using SafeERC20 for IERC20;
 
     address private _tokenAddress;
     bytes32 private _merkleRoot;
@@ -92,6 +21,9 @@ contract ClaimOwl is Context, Ownable {
         address tokenAddress,
         bytes32 merkleRoot
     ) {
+        require(tokenAddress != address(0), "ClaimOwl: Token address cannot be 0");
+        require(merkleRoot != bytes32(0), "ClaimOwl: Merkle root cannot be 0");
+
         _tokenAddress = tokenAddress;
         _merkleRoot = merkleRoot;
     }
@@ -99,15 +31,20 @@ contract ClaimOwl is Context, Ownable {
     // this function can be used to withdraw tokens back to the owner
     function withdraw() external onlyOwner {
         uint256 tokenBalance = IERC20(_tokenAddress).balanceOf(address(this));
-        IERC20(_tokenAddress).transfer(owner(), tokenBalance);
+        IERC20(_tokenAddress).safeTransfer(owner(), tokenBalance);
     }
 
-    function getRoot() public view returns (bytes32) {
+    function withdrawETH() external onlyOwner {
+        uint256 ethBalance = address(this).balance;
+        payable(owner()).transfer(ethBalance);
+    }
+
+    function getRoot() external view returns (bytes32) {
         return _merkleRoot;
     }
 
     // check if an address has claimed
-    function isClaimed(address account) public view returns (bool) {
+    function isClaimed(address account) external view returns (bool) {
         return _isClaimed[account];
     }
 
@@ -119,7 +56,7 @@ contract ClaimOwl is Context, Ownable {
         require(tokenBalance >= amount, "ClaimOwl: Not enough funds");
 
         _isClaimed[account] = true;
-        IERC20(_tokenAddress).transfer(account, amount);
+        IERC20(_tokenAddress).safeTransfer(account, amount);
     }
 
     // this function is used to verify the proof before calling claim

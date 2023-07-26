@@ -2,86 +2,10 @@
 
 pragma solidity 0.8.9;
 
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-}
-
-interface IERC20 {
-    function totalSupply() external view returns (uint256);
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function allowance(address owner, address spender) external view returns (uint256);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
-
-library SafeMath {
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
-        require(c >= a, "SafeMath: addition overflow");
-        return c;
-    }
-
-    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-        return sub(a, b, "SafeMath: subtraction overflow");
-    }
-
-    function sub(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
-        require(b <= a, errorMessage);
-        uint256 c = a - b;
-        return c;
-    }
-
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-        if (a == 0) {
-            return 0;
-        }
-        uint256 c = a * b;
-        require(c / a == b, "SafeMath: multiplication overflow");
-        return c;
-    }
-
-    function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        return div(a, b, "SafeMath: division by zero");
-    }
-
-    function div(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
-        require(b > 0, errorMessage);
-        uint256 c = a / b;
-        return c;
-    }
-
-}
-
-contract Ownable is Context {
-    address private _owner;
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    constructor () {
-        address msgSender = _msgSender();
-        _owner = msgSender;
-        emit OwnershipTransferred(address(0), msgSender);
-    }
-
-    function owner() public view returns (address) {
-        return _owner;
-    }
-
-    modifier onlyOwner() {
-        require(_owner == _msgSender(), "Ownable: caller is not the owner");
-        _;
-    }
-
-    function renounceOwnership() public virtual onlyOwner {
-        emit OwnershipTransferred(_owner, address(0));
-        _owner = address(0);
-    }
-
-}
+import "@openzeppelin/contracts/utils/Context.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract OwlToken is Context, IERC20, Ownable {
     using SafeMath for uint256;
@@ -92,20 +16,20 @@ contract OwlToken is Context, IERC20, Ownable {
     address payable private _taxWallet;
 
     // 1% transfer tax
-    uint256 private constant _transferTax = 1;
+    uint256 private constant TRANSFER_TAX = 1;
     // 50% of tax is burned
-    uint256 private constant _burnFee = 50;
+    uint256 private constant BURN_FEE = 50;
     // max 2% of total supply per wallet
-    uint256 private constant _maxWalletSizeRate = 2;
+    uint256 private constant MAX_WALLET_SIZE_RATE = 2;
 
-    uint8 private constant _decimals = 18;
-    string private constant _name = unicode"Owlracle";
-    string private constant _symbol = unicode"OWL";
+    uint8 private constant DECIMALS = 18;
+    string private constant NAME = unicode"Owlracle";
+    string private constant SYMBOL = unicode"OWL";
 
     // 1M total supply
-    uint256 private _totalSupply = 1000000 * 10**_decimals;
+    uint256 private _totalSupply = 10**6 * 10**DECIMALS;
     uint256 private _burnedTokens = 0;
-    uint256 private _maxWalletSize = _totalSupply.mul(_maxWalletSizeRate).div(100);
+    uint256 private _maxWalletSize;
 
     constructor () {
         _taxWallet = payable(_msgSender());
@@ -114,22 +38,24 @@ contract OwlToken is Context, IERC20, Ownable {
         _isExcludedFromFee[address(this)] = true;
         _isExcludedFromFee[_taxWallet] = true;
 
+        _maxWalletSize = _totalSupply.mul(MAX_WALLET_SIZE_RATE).div(100);
+
         emit Transfer(address(0), _msgSender(), _totalSupply);
     }
 
-    function name() public pure returns (string memory) {
-        return _name;
+    function name() external pure returns (string memory) {
+        return NAME;
     }
 
-    function symbol() public pure returns (string memory) {
-        return _symbol;
+    function symbol() external pure returns (string memory) {
+        return SYMBOL;
     }
 
-    function decimals() public pure returns (uint8) {
-        return _decimals;
+    function decimals() external pure returns (uint8) {
+        return DECIMALS;
     }
 
-    function totalSupply() public view override returns (uint256) {
+    function totalSupply() external view override returns (uint256) {
         return _totalSupply;
     }
 
@@ -137,54 +63,60 @@ contract OwlToken is Context, IERC20, Ownable {
         return _balances[account];
     }
 
-    function transfer(address recipient, uint256 amount) public override returns (bool) {
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
         return true;
     }
 
-    function allowance(address owner, address spender) public view override returns (uint256) {
-        return _allowances[owner][spender];
+    function allowance(address ownerAddress, address spender) external view override returns (uint256) {
+        return _allowances[ownerAddress][spender];
     }
 
-    function approve(address spender, uint256 amount) public override returns (bool) {
+    function approve(address spender, uint256 amount) external override returns (bool) {
         _approve(_msgSender(), spender, amount);
         return true;
     }
 
-    function maxWalletSize() public view returns (uint256) {
+    function maxWalletSize() external view returns (uint256) {
         return _maxWalletSize;
     }
 
-    function burnedTokens() public view returns (uint256) {
+    function burnedTokens() external view returns (uint256) {
         return _burnedTokens;
     }
 
-    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
         _transfer(sender, recipient, amount);
         _approve(sender, _msgSender(), _allowances[sender][_msgSender()].sub(amount, "ERC20: transfer amount exceeds allowance"));
         return true;
     }
 
-    function excludeFromFee(address account) public onlyOwner {
+    function excludeFromFee(address account) external onlyOwner {
         _isExcludedFromFee[account] = true;
     }
 
     // this needs to be called for the liquidity pool
-    function excludeFromMaxWalletSize(address account) public onlyOwner {
+    function excludeFromMaxWalletSize(address account) external onlyOwner {
         _isExcludedFromMaxWalletSize[account] = true;
     }
 
-    function setTaxWallet(address payable account) public onlyOwner {
+    function setTaxWallet(address payable account) external onlyOwner {
+        require(account != address(0), "OwlToken: Zero address");
         _isExcludedFromFee[_taxWallet] = false;
         _taxWallet = account;
         _isExcludedFromFee[_taxWallet] = true;
     }
 
-    function _approve(address owner, address spender, uint256 amount) private {
-        require(owner != address(0), "ERC20: approve from the zero address");
+    function withdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        payable(_msgSender()).transfer(balance);
+    }
+
+    function _approve(address ownerAddress, address spender, uint256 amount) private {
+        require(ownerAddress != address(0), "ERC20: approve from the zero address");
         require(spender != address(0), "ERC20: approve to the zero address");
-        _allowances[owner][spender] = amount;
-        emit Approval(owner, spender, amount);
+        _allowances[ownerAddress][spender] = amount;
+        emit Approval(ownerAddress, spender, amount);
     }
 
     function _transfer(address from, address to, uint256 amount) private {
@@ -195,7 +127,7 @@ contract OwlToken is Context, IERC20, Ownable {
         uint256 feeAmount=0;
         if (!_isExcludedFromFee[from] && !_isExcludedFromFee[to]) {
             // calculate tax amount
-            feeAmount = amount.mul(_transferTax).div(100);
+            feeAmount = amount.mul(TRANSFER_TAX).div(100);
 
             // a single wallet cannot hold more than _maxWalletSize
             if (!_isExcludedFromMaxWalletSize[to]) {
@@ -214,12 +146,12 @@ contract OwlToken is Context, IERC20, Ownable {
 
     function _payFee(uint256 amount) private {
         // burn designated amount
-        uint256 burnAmount = amount.mul(_burnFee).div(100);
+        uint256 burnAmount = amount.mul(BURN_FEE).div(100);
         _totalSupply = _totalSupply.sub(burnAmount);
         _burnedTokens = _burnedTokens.add(burnAmount);
 
         // update max wallet size
-        _maxWalletSize = _totalSupply.mul(_maxWalletSizeRate).div(100);
+        _maxWalletSize = _totalSupply.mul(MAX_WALLET_SIZE_RATE).div(100);
 
         // send the rest to tax wallet
         _balances[_taxWallet] = _balances[_taxWallet].add(amount.sub(burnAmount));
