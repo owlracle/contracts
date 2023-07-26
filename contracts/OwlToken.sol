@@ -30,6 +30,7 @@ contract OwlToken is Context, IERC20, Ownable {
     uint256 private _totalSupply = 10**6 * 10**DECIMALS;
     uint256 private _burnedTokens = 0;
     uint256 private _maxWalletSize;
+    bool private _isTransfersRestricted = true;
 
     constructor () {
         _taxWallet = payable(_msgSender());
@@ -38,6 +39,7 @@ contract OwlToken is Context, IERC20, Ownable {
         _isExcludedFromFee[address(this)] = true;
         _isExcludedFromFee[_taxWallet] = true;
 
+        // maxWalletSize is restricted to 2% of total supply at first
         _maxWalletSize = _totalSupply.mul(MAX_WALLET_SIZE_RATE).div(100);
 
         emit Transfer(address(0), _msgSender(), _totalSupply);
@@ -77,12 +79,12 @@ contract OwlToken is Context, IERC20, Ownable {
         return true;
     }
 
-    function maxWalletSize() external view returns (uint256) {
-        return _maxWalletSize;
-    }
-
     function burnedTokens() external view returns (uint256) {
         return _burnedTokens;
+    }
+
+    function taxWallet() external view returns (address) {
+        return _taxWallet;
     }
 
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
@@ -100,8 +102,11 @@ contract OwlToken is Context, IERC20, Ownable {
         _isExcludedFromMaxWalletSize[account] = true;
     }
 
-    function setTaxWallet(address payable account) external onlyOwner {
+    // only the owner or the current tax wallet can call this
+    function setTaxWallet(address payable account) external {
+        require(_msgSender() == owner() || _msgSender() == _taxWallet, "OwlToken: Not owner or tax wallet");
         require(account != address(0), "OwlToken: Zero address");
+        
         _isExcludedFromFee[_taxWallet] = false;
         _taxWallet = account;
         _isExcludedFromFee[_taxWallet] = true;
@@ -110,6 +115,12 @@ contract OwlToken is Context, IERC20, Ownable {
     function withdraw() external onlyOwner {
         uint256 balance = address(this).balance;
         payable(_msgSender()).transfer(balance);
+    }
+
+    function removeRestrictions() external onlyOwner {
+        require(_isTransfersRestricted, "OwlToken: Transfers are already unrestricted");
+        _isTransfersRestricted = false;
+        _maxWalletSize = _totalSupply;
     }
 
     function _approve(address ownerAddress, address spender, uint256 amount) private {
@@ -130,7 +141,7 @@ contract OwlToken is Context, IERC20, Ownable {
             feeAmount = amount.mul(TRANSFER_TAX).div(100);
 
             // a single wallet cannot hold more than _maxWalletSize
-            if (!_isExcludedFromMaxWalletSize[to]) {
+            if (_isTransfersRestricted && !_isExcludedFromMaxWalletSize[to]) {
                 require(balanceOf(to) + amount <= _maxWalletSize, "OwlToken: Exceeds the maxWalletSize");
             }
         }
@@ -149,9 +160,6 @@ contract OwlToken is Context, IERC20, Ownable {
         uint256 burnAmount = amount.mul(BURN_FEE).div(100);
         _totalSupply = _totalSupply.sub(burnAmount);
         _burnedTokens = _burnedTokens.add(burnAmount);
-
-        // update max wallet size
-        _maxWalletSize = _totalSupply.mul(MAX_WALLET_SIZE_RATE).div(100);
 
         // send the rest to tax wallet
         _balances[_taxWallet] = _balances[_taxWallet].add(amount.sub(burnAmount));

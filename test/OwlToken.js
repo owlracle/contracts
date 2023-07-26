@@ -8,14 +8,17 @@ describe('OwlToken', () => {
     let owner;
     let user1;
     let user2;
+    let user3;
     let owlToken;
     let startingState;
     const uniswapV2RouterAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
     const uniswapV2FactoryAddress = '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f';
+    let taxFee = ethers.utils.parseEther('1');
+    let burnFee = ethers.utils.parseEther('50');
 
     before(async() => {
         const OwlToken = await ethers.getContractFactory('OwlToken');
-        [ owner, user1, user2 ] = await ethers.getSigners();
+        [ owner, user1, user2, user3 ] = await ethers.getSigners();
         owlToken = await OwlToken.deploy();
 
         startingState = await takeSnapshot();
@@ -33,6 +36,21 @@ describe('OwlToken', () => {
         it('Should assign the total supply of tokens to the owner', async function () {
             const ownerBalance = await owlToken.balanceOf(owner.address);
             expect(await owlToken.totalSupply()).to.equal(ownerBalance);
+        });
+
+        it('should not allow non-owners to use restricted functions', async() => {
+            await expect(owlToken.connect(user1).excludeFromFee(user2.address)).to.be.revertedWith('Ownable: caller is not the owner');
+            await expect(owlToken.connect(user1).excludeFromMaxWalletSize(user2.address)).to.be.revertedWith('Ownable: caller is not the owner');
+            await expect(owlToken.connect(user1).withdraw()).to.be.revertedWith('Ownable: caller is not the owner');
+            await expect(owlToken.connect(user1).removeRestrictions()).to.be.revertedWith('Ownable: caller is not the owner');
+        });
+
+        it('should allow tax wallet be changed', async() => {
+            await owlToken.setTaxWallet(user1.address);
+            await owlToken.connect(user1).setTaxWallet(user2.address);
+            expect(await owlToken.taxWallet()).to.equal(user2.address);
+            
+            await expect(owlToken.connect(user1).setTaxWallet(owner.address)).to.be.revertedWith('OwlToken: Not owner or tax wallet');
         });
     })
 
@@ -65,9 +83,6 @@ describe('OwlToken', () => {
             let user2Balance = await owlToken.balanceOf(user2.address);
             let taxWalletTax = (await owlToken.balanceOf(owner.address)).sub(taxWalletStartingBalance);
             
-            let taxFee = ethers.utils.parseEther('1');
-            let burnFee = ethers.utils.parseEther('50');
-
             let tax = amount.mul(taxFee).div(ethers.utils.parseEther('100'));
             let burnAmount = tax.mul(burnFee).div(ethers.utils.parseEther('100'));
             let remainingTax = tax.sub(burnAmount);
@@ -84,6 +99,32 @@ describe('OwlToken', () => {
             
             // tax wallet still have their right share
             expect(taxWalletTax).to.equal(remainingTax);
+        });
+
+        it('should send fee to the current taxWallet', async() => {
+            const amount = ethers.utils.parseEther('1');
+            // this transfer does not incur tax (from owner)
+            await owlToken.transfer(user1.address, amount);
+            
+            // change taxWallet to user3
+            await owlToken.setTaxWallet(user3.address);
+
+            // send from user1 to user2 (taxable)
+            await owlToken.connect(user1).transfer(user2.address, amount);
+            
+            // 1% tax
+            let tax = amount.mul(taxFee).div(ethers.utils.parseEther('100'));
+            // remove 50% for burn
+            let taxAfterBurn = tax.sub(tax.mul(burnFee).div(ethers.utils.parseEther('100')));
+
+            let user2Balance = await owlToken.balanceOf(user2.address);
+            let user3Balance = await owlToken.balanceOf(user3.address);
+
+            // user2 = amount - tax
+            expect(user2Balance).to.equal(amount.sub(tax));
+
+            // user3 = tax - taxAfterBurn
+            expect(user3Balance).to.equal(tax.sub(taxAfterBurn));
         });
 
         it('should not allow wallet holding more than 2% of total supply (single transfer)', async() => {
@@ -113,7 +154,39 @@ describe('OwlToken', () => {
                 owlToken.connect(user1).transfer(user2.address, finalAmount)
             ).to.be.revertedWith('OwlToken: Exceeds the maxWalletSize');
         });
-        
+
+        it('should allow a single wallet to bypass maxWalletSize', async() => {
+            const totalSupply = await owlToken.totalSupply();
+            const maxAmount = totalSupply.mul(ethers.utils.parseEther('2')).div(ethers.utils.parseEther('100'));
+            const beyondMaxAmount = maxAmount.mul(2);
+            
+            await owlToken.transfer(user1.address, beyondMaxAmount);
+
+            // remove restriction
+            await owlToken.excludeFromMaxWalletSize(user2.address);
+
+            // should not revert
+            await expect(
+                owlToken.connect(user1).transfer(user2.address, beyondMaxAmount)
+            ).to.not.be.reverted;
+        });
+
+        it('should remove wallet size restrictions for all', async() => {
+            const totalSupply = await owlToken.totalSupply();
+            const maxAmount = totalSupply.mul(ethers.utils.parseEther('2')).div(ethers.utils.parseEther('100'));
+            const beyondMaxAmount = maxAmount.mul(2);
+            
+            await owlToken.transfer(user1.address, beyondMaxAmount);
+            await owlToken.transfer(user2.address, beyondMaxAmount);
+
+            // remove restriction
+            await owlToken.removeRestrictions();
+
+            // should not revert
+            await expect(owlToken.connect(user1).transfer(user2.address, beyondMaxAmount)).to.not.be.reverted;
+            await expect(owlToken.connect(user2).transfer(user1.address, beyondMaxAmount)).to.not.be.reverted;
+        });
+
     });
 
     describe('Swap', async() => {
@@ -181,9 +254,6 @@ describe('OwlToken', () => {
             let pairTokenDiff = pairTotalBeforeSwap.sub(pairTotalAfterSwap);
 
             let user1Balance = await owlToken.connect(user1).balanceOf(user1.address);
-
-            let taxFee = ethers.utils.parseEther('1');
-            let burnFee = ethers.utils.parseEther('50');
 
             let tax = pairTokenDiff.mul(taxFee).div(ethers.utils.parseEther('100'));
             let burnAmount = tax.mul(burnFee).div(ethers.utils.parseEther('100'));
