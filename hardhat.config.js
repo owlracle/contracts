@@ -1,7 +1,6 @@
 const { task } = require("hardhat/config");
 
 require("@nomicfoundation/hardhat-toolbox");
-require("@nomiclabs/hardhat-etherscan");
 
 // tasks file
 [
@@ -29,13 +28,13 @@ module.exports = {
     networks: {
         hardhat: {
             forking: {
-                url: process.env.MAINNET_URL,
+                url: 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_MAINNET,
                 blockNumber: 17746148,
             }
         },
         sepolia: {
-            url: process.env.NETWORK_URL,
-            accounts: [`0x${process.env.DEV_PRIVATE_KEY}`]
+            url: 'https://eth-sepolia.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_SEPOLIA,
+            accounts: [`0x${process.env.WALLET_PRIVATE_KEY}`]
         }
     },
     etherscan: {
