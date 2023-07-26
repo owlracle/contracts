@@ -22,15 +22,22 @@ module.exports = async ({
     let tree = new MerkleTree(leaves, keccak256, { sort: true });
     
     // deploy claimOwl
+    console.log('Deploying claim contract...')
     const ClaimOwl = await ethers.getContractFactory('ClaimOwl');
     let claimOwl = await ClaimOwl.deploy(owlToken.address, tree.getRoot());
+    await claimOwl.deployed();
+    
+    console.log(`Tree root: ${tree.getHexRoot()}`);
     
     // exclude claimOwl from fee so users get exactly what they claim
+    console.log('Excluding claim contract from fee...');
     await owlToken.excludeFromFee(claimOwl.address);
 
     // fund the claim contract
+    console.log('Funding claim contract...');
     const ownerBalance = await owlToken.balanceOf(deployer.address);
     await owlToken.transfer(claimOwl.address, ownerBalance);
+
 
     return {
         claimOwl,

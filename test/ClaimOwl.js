@@ -38,6 +38,9 @@ describe('ClaimOwl', () => {
         // deploy claimOwl
         const ClaimOwl = await ethers.getContractFactory('ClaimOwl');
         claimOwl = await ClaimOwl.deploy(owlToken.address, tree.getRoot());
+        await claimOwl.deployed();
+
+        // console.log(`Tree root: ${tree.getHexRoot()}`);
 
         // exclude claimOwl from fee so users get exactly what they claim
         await owlToken.excludeFromFee(claimOwl.address);
@@ -100,6 +103,10 @@ describe('ClaimOwl', () => {
             user = holders[0];
             leaf = keccak256(ethers.utils.solidityPack(["address", "uint256"], [user.address, user.amount]));
             proof = tree.getProof(leaf).map(p => p.data);
+
+            // get hex proof
+            // const proofHex = tree.getHexProof(leaf);
+            // console.log(`User ${user.address} amount: ${user.amount} proof: ${proofHex}`);
         });
 
         it('should be able to claim tokens (single user)', async() => {

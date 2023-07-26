@@ -6,7 +6,6 @@ module.exports = async ({
     tree,
     claimOwl,
     owlToken,
-    deployer,
 }) => {
 
     // claim tokens

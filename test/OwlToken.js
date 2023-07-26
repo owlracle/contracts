@@ -135,7 +135,7 @@ describe('OwlToken', () => {
             amountETH = ethers.utils.parseEther('1');
     
             await owlToken.approve(uniswapV2RouterAddress, amountToken);
-            await uniswapV2Router.addLiquidityETH(
+            const liquidity = await uniswapV2Router.addLiquidityETH(
                 owlToken.address,
                 amountToken,
                 0,
@@ -144,6 +144,7 @@ describe('OwlToken', () => {
                 Date.now() + 1000 * 60 * 10,
                 { value: amountETH }
             );
+            await liquidity.wait();
     
             const pairAddress = await uniswapV2Factory.getPair(owlToken.address, uniswapV2Router.WETH());
             uniswapV2Pair = await ethers.getContractAt('contracts/MockUniswapV2.sol:IUniswapV2Pair', pairAddress);
