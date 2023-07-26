@@ -20,6 +20,7 @@ module.exports = async ({
     let amountToken = (await owlToken.balanceOf(deployer.address)).div(2);
     let amountETH = ethers.utils.parseEther('1');
 
+    console.log('Adding liquidity...')
     await owlToken.approve(uniswapV2RouterAddress, amountToken);
     await uniswapV2Router.addLiquidityETH(
         owlToken.address,

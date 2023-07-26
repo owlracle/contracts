@@ -3,7 +3,9 @@ let returnedVars = {};
 const scripts = ([
     'OwlToken',
     'addLiqudity',
+    'ClaimOwl',
     'swap',
+    'claim',
 ]).map(e => require(`./${e}`));
 
 async function main() {

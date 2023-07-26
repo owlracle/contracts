@@ -32,7 +32,6 @@ describe('ClaimOwl', () => {
         });
 
         // create merkle tree
-        // const leaves = holders.map(({ address, amount }) => keccak256(address + amount));
         const leaves = holders.map(({ address, amount }) => keccak256(ethers.utils.solidityPack(["address", "uint256"], [address, amount])));
         tree = new MerkleTree(leaves, keccak256, { sort: true });
 
