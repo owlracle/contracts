@@ -49,5 +49,5 @@ async function callback() {
 module.exports = {
     name: 'token-distribution',
     description: 'Create airdrop.txt file with new tokens distribution.',
-    callback: callback,
+    callback,
 };
