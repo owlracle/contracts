@@ -17,8 +17,8 @@ const scripts = ([
     'OwlToken',
     'addLiqudity',
     'ClaimOwl',
-    'swap',
-    'claim',
+    // 'swap',
+    // 'claim',
 ]).map(e => require(`./${e}`));
 
 async function main() {

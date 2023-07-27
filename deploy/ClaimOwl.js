@@ -23,6 +23,7 @@ module.exports = async ({
     let claimOwl = await ClaimOwl.deploy(owlToken.address, tree.getRoot());
     await claimOwl.deployed();
     
+    console.log(`ClaimOwl address: ${ claimOwl.address }`);
     console.log(`Tree root: ${tree.getHexRoot()}`);
     
     // exclude claimOwl from fee so users get exactly what they claim
