@@ -63,5 +63,4 @@ The `deploy/deployer.js` script will deploy the contracts, and there you can cho
 
 ```
 npm run verify -- NETWORK CONTRACT_ADDRESS ARG1 ARG2 ...
-
 ```

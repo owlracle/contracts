@@ -4,7 +4,8 @@ require("@nomicfoundation/hardhat-toolbox");
 
 // tasks file
 [
-    'get-new-tokens-distribution'
+    'new-token-distribution',
+    'liquidity-pool-holders',
 ]
 .map(e => require(`./tasks/${e}`))
 .forEach(e => task(e.name, e.description, e.callback));
@@ -28,9 +29,16 @@ module.exports = {
     networks: {
         hardhat: {
             forking: {
+                enabled: true,
                 url: 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_MAINNET,
-                blockNumber: 17746148,
-            }
+            },
+        },
+        localhost: {
+            url: 'http://localhost:8550',
+        },
+        mainnet: {
+            url: 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_MAINNET,
+            accounts: [`0x${process.env.WALLET_PRIVATE_KEY}`],
         },
         sepolia: {
             url: 'https://eth-sepolia.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_SEPOLIA,
