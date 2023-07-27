@@ -31,6 +31,7 @@ module.exports = {
             forking: {
                 enabled: true,
                 url: 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_MAINNET,
+                blockNumber: 17720478,
             },
         },
         localhost: {

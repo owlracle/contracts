@@ -11,11 +11,7 @@ module.exports = async ({
     // deploy claim contract
 
     // get holders from file
-    let holders = fs.readFileSync(__dirname + '/../files/airdrop-wei.txt', 'utf-8');
-    holders = holders.split('\n').map(row => {
-        let [address, amount] = row.replace(/\s+/, '').split(',');
-        return { address, amount };
-    });
+    let holders = require('../files/airdrop.json');
 
     // create merkle tree
     const leaves = holders.map(({ address, amount }) => keccak256(ethers.utils.solidityPack(["address", "uint256"], [address, amount])));

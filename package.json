@@ -6,9 +6,9 @@
     "start": "npx hardhat node",
     "fork": "npx hardhat node --fork ${URL:-https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY_MAINNET} --fork-block-number $FORK_BLOCK --port 8550",
     "compile": "npx hardhat compile",
-    "test": "npx hardhat test test/tester.js",
-    "deploy": "npx hardhat run deploy/deployer.js --network ",
-    "verify": "npx hardhat verify --network ",
+    "test": "npx hardhat test test/tester.js --network ${NETWORK:-hardhat}",
+    "deploy": "npx hardhat run deploy/deployer.js --network ${NETWORK:-hardhat}",
+    "verify": "npx hardhat verify --network ${NETWORK:-hardhat}",
     "clean": "npx hardhat clean",
     "scan": "slither /share/contracts/$CONTRACT.sol --solc-remaps @=/share/node_modules/@ --print human-summary",
     "scan-full": "slither /share/contracts/$CONTRACT.sol --solc-remaps @=/share/node_modules/@"

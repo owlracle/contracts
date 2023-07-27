@@ -25,11 +25,7 @@ describe('ClaimOwl', () => {
         owlToken = await OwlToken.deploy();
 
         // get holders from file
-        holders = fs.readFileSync(__dirname + '/../files/airdrop-wei.txt', 'utf-8');
-        holders = holders.split('\n').map(row => {
-            let [address, amount] = row.replace(/\s+/, '').split(',');
-            return { address, amount };
-        });
+        holders = require('../files/airdrop.json');
 
         // create merkle tree
         const leaves = holders.map(({ address, amount }) => keccak256(ethers.utils.solidityPack(["address", "uint256"], [address, amount])));
