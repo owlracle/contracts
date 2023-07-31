@@ -8,7 +8,7 @@
     "compile": "npx hardhat compile",
     "test": "npx hardhat test test/tester.js --network ${NETWORK:-hardhat}",
     "deploy": "npx hardhat run deploy/deployer.js --network ${NETWORK:-hardhat}",
-    "verify": "npx hardhat verify --network ${NETWORK:-hardhat}",
+    "verify": "npx hardhat verify --network ",
     "clean": "npx hardhat clean",
     "scan": "slither /share/contracts/$CONTRACT.sol --solc-remaps @=/share/node_modules/@ --print human-summary",
     "scan-full": "slither /share/contracts/$CONTRACT.sol --solc-remaps @=/share/node_modules/@"

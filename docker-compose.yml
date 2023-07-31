@@ -8,7 +8,11 @@ services:
         env_file:
             - .env
         ports:
-            - "127.0.0.1:8500-8600:8500-8600"
+            - "127.0.0.1:8545:8545"
+            - "127.0.0.1:8550:8550"
+        networks:
+            - owlracle
+            - hardhat
         command: "npm start"
     slither:
         image: trailofbits/eth-security-toolbox
@@ -16,5 +20,12 @@ services:
             - .:/share
             - node_modules:/share/node_modules
         tty: true
+        networks:
+            - hardhat
 volumes:
     node_modules:
+networks:
+    owlracle:
+        external: true
+    hardhat:
+

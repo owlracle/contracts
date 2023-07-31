@@ -49,7 +49,7 @@ CONTRACT=CONTRACT_NAME npm run scan
 # Deploy
 
 ```
-npm run deploy -- NETWORK
+NETWORK=CHOSEN_NETWORK npm run deploy
 ```
 
 This script will deploy the contracts to the network specified in *NETWORK* (see `hardhat.config.js`).
