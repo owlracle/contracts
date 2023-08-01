@@ -8,6 +8,8 @@ module.exports = async ({
     deployer,
 }) => {
 
+    let eth = await deployer.getBalance();
+
     // deploy claim contract
 
     // get holders from file
@@ -35,6 +37,8 @@ module.exports = async ({
     const ownerBalance = await owlToken.balanceOf(deployer.address);
     await owlToken.transfer(claimOwl.address, ownerBalance);
 
+    let diff = eth.sub(await deployer.getBalance());
+    console.log(`Deploy cost: ${ ethers.utils.formatEther(diff) } ETH`);
 
     return {
         claimOwl,

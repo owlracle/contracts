@@ -7,6 +7,8 @@ module.exports = async ({
     deployer,
     owlToken
 }) => {
+    let eth = await deployer.getBalance();
+
     let uniswapV2Router = await ethers.getContractAt('contracts/MockUniswapV2.sol:IUniswapV2Router02', uniswapV2RouterAddress);
     let uniswapV2Factory = await ethers.getContractAt('contracts/MockUniswapV2.sol:IUniswapV2Factory', uniswapV2FactoryAddress);
 
@@ -37,6 +39,9 @@ module.exports = async ({
 
     console.log('Exclude pair from fee...');
     await owlToken.excludeFromMaxWalletSize(uniswapV2Pair.address);
+
+    let diff = eth.sub(await deployer.getBalance());
+    console.log(`Spent ${ ethers.utils.formatEther(diff) } ETH`);
 
     return {
         uniswapV2Router,

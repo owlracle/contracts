@@ -6,6 +6,7 @@ require("@nomicfoundation/hardhat-toolbox");
 [
     'new-token-distribution',
     'liquidity-pool-holders',
+    'merkle',
 ]
 .map(e => require(`./tasks/${e}`))
 .forEach(e => task(e.name, e.description, e.callback));

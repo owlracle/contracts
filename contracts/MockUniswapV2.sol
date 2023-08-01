@@ -41,4 +41,6 @@ interface IUniswapV2Router02 {
         address to,
         uint deadline
     ) external payable;
+
+    function getAmountsOut(uint amountIn, address[] memory path) external view returns (uint[] memory amounts);
 }
