@@ -61,6 +61,17 @@ describe('OwlToken', () => {
             expect(await owlToken.balanceOf(user1.address)).to.equal(amount);
         });
 
+        it('should not allow sending to address(0)', async() => {
+            const amount = ethers.utils.parseEther('1');
+            await expect(owlToken.transfer(ethers.constants.AddressZero, amount)).to.be.revertedWith('ERC20: transfer to the zero address');
+        });
+
+        it('should allow sending to burning address 0xEeeee...', async() => {
+            const amount = ethers.utils.parseEther('1');
+            const burnAddress = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+            await expect(owlToken.transfer(burnAddress, amount)).to.be.ok;
+        });
+
         it('should not transfer tokens if sender does not have enough', async() => {
             const amount = ethers.utils.parseEther('10');
             await expect(owlToken.connect(user1).transfer(owner.address, amount)).to.be.revertedWith('OwlToken: Insufficient balance');
@@ -228,12 +239,12 @@ describe('OwlToken', () => {
         it('should create pair successfully and provide liquidity', async() => {
             const reserves = await uniswapV2Pair.getReserves();
             
-            expect( reserves[0] ).to.equal(amountToken);
-            expect( reserves[1] ).to.equal(amountETH);
+            expect( reserves[1] ).to.equal(amountToken);
+            expect( reserves[0] ).to.equal(amountETH);
         });
 
         it('should give right amount of tokens to user and tax when swapping', async() => {
-            let pairTotalBeforeSwap = (await uniswapV2Pair.getReserves())[0];
+            let pairTotalBeforeSwap = (await uniswapV2Pair.getReserves())[1];
             let taxWalletTokensBefore = await owlToken.balanceOf(owner.address);
 
             // perform the swap
@@ -250,7 +261,7 @@ describe('OwlToken', () => {
             let taxWalletTokensAfter = await owlToken.balanceOf(owner.address);
             let taxWalletTokenDiff = taxWalletTokensAfter.sub(taxWalletTokensBefore);
             
-            let pairTotalAfterSwap = (await uniswapV2Pair.getReserves())[0];
+            let pairTotalAfterSwap = (await uniswapV2Pair.getReserves())[1];
             let pairTokenDiff = pairTotalBeforeSwap.sub(pairTotalAfterSwap);
 
             let user1Balance = await owlToken.connect(user1).balanceOf(user1.address);
