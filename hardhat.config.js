@@ -34,7 +34,8 @@ module.exports = {
                 url: 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY_MAINNET,
                 // blockNumber: 17811022,
                 // blockNumber: 17720478,
-                blockNumber: 17820700,
+                // blockNumber: 17820700,
+                blockNumber: 17921059,
             },
             
         },

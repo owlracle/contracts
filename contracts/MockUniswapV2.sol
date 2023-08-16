@@ -43,4 +43,7 @@ interface IUniswapV2Router02 {
     ) external payable;
 
     function getAmountsOut(uint amountIn, address[] memory path) external view returns (uint[] memory amounts);
+
+    function getPair(address tokenA, address tokenB) external view returns (address pair);
+    
 }
