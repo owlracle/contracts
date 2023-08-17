@@ -77,8 +77,9 @@ describe('OwlRouter', () => {
 
     describe('Transfer', async() => {
 
-        let owlTax = 1;
-        let routerTransferTax = 100;
+        let owlTax = 1; // 1%
+        let routerTransferTax = 1000; // 1%
+        let owlTaxDiscount = 30; // 30%
 
         before(async() => {
         })
@@ -97,7 +98,7 @@ describe('OwlRouter', () => {
             const user2BalanceBefore = await user2.getBalance();
             const amount = ethers.utils.parseEther('1');
             
-            // 5% fee
+            // router fee
             await owlRouter.setTaxFee('transfer', routerTransferTax);
             let tax = amount.mul(routerTransferTax).div(100000);
             const ownerBefore = await owner.getBalance();
@@ -122,9 +123,11 @@ describe('OwlRouter', () => {
             const amountOWL = ethers.utils.parseEther('10000');
             await owlToken.transfer(user1.address, amountOWL);
             
-            // 5% fee
+            // router fee
             await owlRouter.setTaxFee('transfer', routerTransferTax);
             let tax = amount.mul(routerTransferTax).div(100000);
+            // apply OWL tax discount
+            tax = tax.sub(tax.mul(owlTaxDiscount).div(100));
             // convert eth to OWL
             tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
             // reduce tax by OWL fee
@@ -149,7 +152,7 @@ describe('OwlRouter', () => {
             // set tax wallet
             await owlRouter.setTaxWallet(manager.address);
 
-            // 5% fee
+            // router fee
             await owlRouter.setTaxFee('transfer', routerTransferTax);
             let tax = amountDAI.mul(routerTransferTax).div(100000);
             
@@ -174,9 +177,11 @@ describe('OwlRouter', () => {
             // set tax wallet
             await owlRouter.setTaxWallet(manager.address);
 
-            // 5% fee
+            // router fee
             await owlRouter.setTaxFee('transfer', routerTransferTax);
             let tax = amountDAI.mul(routerTransferTax).div(100000);
+            // apply OWL tax discount
+            tax = tax.sub(tax.mul(owlTaxDiscount).div(100));
             // convert DAI to ETH
             tax = (await uniswapV2Router.getAmountsOut(tax, [daiAddress, await uniswapV2Router.WETH()]))[1];
             // convert ETH to OWL
@@ -206,7 +211,7 @@ describe('OwlRouter', () => {
             // set tax wallet
             await owlRouter.setTaxWallet(manager.address);
 
-            // 5% fee
+            // router fee
             await owlRouter.setTaxFee('transfer', routerTransferTax);
             let tax = amountOWL.mul(routerTransferTax).div(100000);
             
@@ -233,7 +238,7 @@ describe('OwlRouter', () => {
             // set tax wallet
             await owlRouter.setTaxWallet(manager.address);
 
-            // 5% fee
+            // router fee
             await owlRouter.setTaxFee('transfer', routerTransferTax);
             let tax = amountOWL.mul(routerTransferTax).div(100000);
             

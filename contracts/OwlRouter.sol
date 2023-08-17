@@ -24,6 +24,8 @@ contract OwlRouter is Context, Ownable {
     // number are represented in 1e3, so 1000 = 1%
     mapping(string => uint256) private _taxFee;
 
+    // discount on fee when paying tax with OWL
+    uint256 private _taxDiscountOwl;
 
     constructor (
         address owlAddress,
@@ -35,8 +37,11 @@ contract OwlRouter is Context, Ownable {
 
         // starting tax fee
         _taxFee["transfer"] = 0; // 0%
-        _taxFee["swap"] = 100; // 0.1%
-        _taxFee["snipe"] = 500; // 0.5%
+        _taxFee["swap"] = 500; // 0.5%
+        _taxFee["snipe"] = 1000; // 1%
+
+        _taxDiscountOwl = 30; // 30%
+
     }
 
 
@@ -54,6 +59,10 @@ contract OwlRouter is Context, Ownable {
 
     function getTaxFee(string memory mode) external view returns (uint256) {
         return _taxFee[mode];
+    }
+
+    function setTaxDiscount(uint256 taxDiscountOwl) external onlyOwner {
+        _taxDiscountOwl = taxDiscountOwl;
     }
 
 
@@ -91,6 +100,9 @@ contract OwlRouter is Context, Ownable {
         }
 
         uint256 taxAmount = amount.mul(_taxFee[mode]).div(100000); // 1000 == 1%
+
+        // apply discount for paying with OWL
+        taxAmount = taxAmount.sub(taxAmount.mul(_taxDiscountOwl).div(100));
 
         // if token is ETH
         uint256 ethAmount;
