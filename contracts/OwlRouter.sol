@@ -52,6 +52,10 @@ contract OwlRouter is Context, Ownable {
         _taxWallet = taxWallet;
     }
 
+    function getTaxWallet() external view returns (address) {
+        return _taxWallet;
+    }
+
     function setTaxFee(string memory mode, uint256 taxFee) external onlyOwner {
         // taxFee is represented in 1e3, so 1000 = 1%
         _taxFee[mode] = taxFee;
@@ -63,6 +67,10 @@ contract OwlRouter is Context, Ownable {
 
     function setTaxDiscount(uint256 taxDiscountOwl) external onlyOwner {
         _taxDiscountOwl = taxDiscountOwl;
+    }
+
+    function getTaxDiscount() external view returns (uint256) {
+        return _taxDiscountOwl;
     }
 
 
@@ -130,7 +138,7 @@ contract OwlRouter is Context, Ownable {
     }
 
 
-    // --- swap and tranfer functions ---
+    // --- transfer functions ---
 
     function transferETH(address payable recipient, bool payWithOWL) external payable {
         require(_msgSender().balance >= msg.value, "OwlRouter: sender does not have enough balance");
@@ -159,6 +167,78 @@ contract OwlRouter is Context, Ownable {
         else {
             uint256 taxAmount = _sendTax(tokenAddress, amount, "transfer");
             IERC20(tokenAddress).safeTransferFrom(_msgSender(), recipient, amount.sub(taxAmount));
+        }
+    }
+
+
+    // --- swap functions ---
+
+    function swapETHForTokens(address tokenAddress, uint256 amountOutMin, bool payWithOWL) external payable {
+        require(msg.value > 0, "OwlRouter: amount must be greater than 0");
+
+        address[] memory path = new address[](2);
+        path[0] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
+        path[1] = tokenAddress;
+
+        uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(msg.value, path);
+        require(amounts[1] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
+
+        if (payWithOWL) {
+            _sendTaxOWL(address(0), msg.value, "swap");
+            IUniswapV2Router02(_uniswapV2RouterAddress).swapExactETHForTokensSupportingFeeOnTransferTokens{value: msg.value}(amountOutMin, path, _msgSender(), block.timestamp);
+        }
+        else {
+            uint256 taxAmount = _sendTaxETH(msg.value, "swap");
+            IUniswapV2Router02(_uniswapV2RouterAddress).swapExactETHForTokensSupportingFeeOnTransferTokens{value: msg.value.sub(taxAmount)}(amountOutMin, path, _msgSender(), block.timestamp);
+        }
+    }
+
+    function swapTokensForETH(address tokenAddress, uint256 amountIn, uint256 amountOutMin, bool payWithOWL) external {
+        require(IERC20(tokenAddress).balanceOf(_msgSender()) >= amountIn, "OwlRouter: sender does not have enough balance");
+
+        address[] memory path = new address[](2);
+        path[0] = tokenAddress;
+        path[1] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
+
+        IERC20(tokenAddress).safeTransferFrom(_msgSender(), address(this), amountIn);
+        IERC20(tokenAddress).safeApprove(_uniswapV2RouterAddress, amountIn);
+        
+        uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(amountIn, path);
+        require(amounts[1] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
+
+        if (payWithOWL) {
+            _sendTaxOWL(tokenAddress, amountIn, "swap");
+            IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForETHSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, _msgSender(), block.timestamp);
+        }
+        else {
+            IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForETHSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, address(this), block.timestamp);
+            uint256 taxAmount = _sendTaxETH(amounts[1], "swap");
+            payable(_msgSender()).transfer(amounts[1].sub(taxAmount));
+        }
+    }
+
+    function swapTokensForTokens(address tokenAddressIn, address tokenAddressOut, uint256 amountIn, uint256 amountOutMin, bool payWithOWL) external {
+        require(IERC20(tokenAddressIn).balanceOf(_msgSender()) >= amountIn, "OwlRouter: sender does not have enough balance");
+
+        address[] memory path = new address[](3);
+        path[0] = tokenAddressIn;
+        path[1] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
+        path[2] = tokenAddressOut;
+
+
+        if (payWithOWL) {
+            IERC20(tokenAddressIn).safeTransferFrom(_msgSender(), address(this), amountIn);
+            IERC20(tokenAddressIn).safeApprove(_uniswapV2RouterAddress, amountIn);
+            uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(amountIn, path);
+            require(amounts[2] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
+            _sendTaxOWL(tokenAddressIn, amountIn, "swap");
+            IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForTokensSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, _msgSender(), block.timestamp);
+        }
+        else {
+            uint256 taxAmount = _sendTax(tokenAddressIn, amountIn, "swap");
+            IERC20(tokenAddressIn).safeTransferFrom(_msgSender(), address(this), amountIn.sub(taxAmount));
+            IERC20(tokenAddressIn).safeApprove(_uniswapV2RouterAddress, amountIn.sub(taxAmount));
+            IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForTokensSupportingFeeOnTransferTokens(amountIn.sub(taxAmount), amountOutMin, path, _msgSender(), block.timestamp);
         }
     }
 
