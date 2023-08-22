@@ -27,6 +27,11 @@ contract OwlRouter is Context, Ownable {
     // discount on fee when paying tax with OWL
     uint256 private _taxDiscountOwl;
 
+    // holder discounts: multi-step linear
+    uint256[] private _holderDiscountValues;
+    uint256[] private _holderDiscountSteps;
+
+
     constructor (
         address owlAddress,
         address uniswapV2RouterAddress
@@ -42,6 +47,13 @@ contract OwlRouter is Context, Ownable {
 
         _taxDiscountOwl = 30; // 30%
 
+        // starting holder discounts (OWL: Discount%)
+        // 0-5K: 0-20%
+        // 5K-30K: 20-50%
+        // 30K-60K: 50-80%
+        // 60K+: 80%
+        _holderDiscountValues = [2000, 3000, 3000]; // 20%, 30% (50%), 30% (80%)
+        _holderDiscountSteps = [500e18, 3000e18, 6000e18]; // 5K, 30K, 60K
     }
 
 
@@ -73,8 +85,17 @@ contract OwlRouter is Context, Ownable {
         return _taxDiscountOwl;
     }
 
+    function setHolderDiscount(uint256[] memory holderDiscountValues, uint256[] memory holderDiscountSteps) external onlyOwner {
+        _holderDiscountValues = holderDiscountValues;
+        _holderDiscountSteps = holderDiscountSteps;
+    }
 
-    // --- private functions to help handle routing --- 
+    function getHolderDiscount() external view returns (uint256[] memory, uint256[] memory) {
+        return (_holderDiscountValues, _holderDiscountSteps);
+    }
+
+
+    // --- tax sending functions --- 
 
     function _sendTaxETH(uint256 amount, string memory mode) private returns (uint256) {
         require(_taxFee[mode] >= 0, "OwlRouter: tax fee is not set");
@@ -135,6 +156,26 @@ contract OwlRouter is Context, Ownable {
         // transfer OWL to tax wallet
         IERC20(_owlAddress).safeTransferFrom(_msgSender(), _taxWallet, owlAmount);
         return owlAmount;
+    }
+
+
+    // --- holder discount  ---
+
+    function getMyHolderDiscount() public view returns (uint256) {
+        uint256 holderDiscount = 0;
+        uint256 balanceLeft = IERC20(_owlAddress).balanceOf(_msgSender());
+
+        for (uint256 i = 0; i < _holderDiscountSteps.length; i++) {
+            if (balanceLeft < _holderDiscountSteps[i]) {
+                holderDiscount = holderDiscount.add(balanceLeft.mul(_holderDiscountValues[i]).div(_holderDiscountSteps[i]));
+                break;
+            }
+
+            holderDiscount = holderDiscount.add(_holderDiscountValues[i]);
+            balanceLeft = balanceLeft.sub(_holderDiscountSteps[i]);
+        }
+
+        return holderDiscount;
     }
 
 

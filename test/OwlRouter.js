@@ -484,4 +484,56 @@ describe('OwlRouter', () => {
 
     });
 
-})
+    describe('Holder discount', async() => {
+
+        let owlTax = 1; // 1%
+        let routerTransferTax = 1000; // 1%
+        let owlTaxDiscount = 30; // 30%
+        let holderDiscountSteps = [
+            ethers.utils.parseEther('5000'),
+            ethers.utils.parseEther('30000'),
+            ethers.utils.parseEther('60000'),
+        ];
+        let holderDiscountValues = [ 2000, 3000, 3000 ];
+
+        function calculateDiscount(balance) {
+            let discount = ethers.BigNumber.from(0);
+            for (let i = 0; i < holderDiscountSteps.length; i++) {
+                if (balance.lt(holderDiscountSteps[i])) {
+                    discount = discount.add(balance.mul(holderDiscountValues[i]).div(holderDiscountSteps[i]));
+                    break;
+                }
+
+                discount = discount.add(holderDiscountValues[i]);
+                balance = balance.sub(holderDiscountSteps[i]);
+            }
+            return discount;
+        }
+
+        beforeEach(async() => {
+            await owlRouter.setTaxFee('swap', routerTransferTax);
+            await owlRouter.setTaxDiscount(owlTaxDiscount);
+            await owlRouter.setTaxWallet(manager.address);
+            await owlRouter.setHolderDiscount(holderDiscountValues, holderDiscountSteps);
+        });
+
+        it ('should get correct holder discount', async() => {
+            let discount;
+            let balance;
+            let increment = 500;
+
+            while (true) {
+                if ((await owlToken.balanceOf(owner.address)).lt(ethers.utils.parseEther(increment.toString()))) {
+                    break;
+                }
+
+                await owlToken.transfer(user1.address, ethers.utils.parseEther(increment.toString()));
+                balance = await owlToken.balanceOf(user1.address);
+                discount = await owlRouter.connect(user1).getMyHolderDiscount();
+
+                // console.log('balance', ethers.utils.formatEther(balance), 'discount', discount);
+                expect(discount).to.equal(calculateDiscount(balance));
+            }
+        });
+    });
+});
