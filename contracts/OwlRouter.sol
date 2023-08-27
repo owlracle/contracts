@@ -8,8 +8,6 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./MockUniswapV2.sol";
 
-import "hardhat/console.sol";
-
 contract OwlRouter is Context, Ownable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
