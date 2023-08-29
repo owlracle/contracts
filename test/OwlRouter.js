@@ -67,6 +67,12 @@ describe('OwlRouter', () => {
                     await owlRouter.setTaxFee('transfer', 5000);
                     expect(await owlRouter.getTaxFee('transfer')).to.equal(5000);
                 });
+
+                it ('should revert when trying to use a non-existent mode', async() => {
+                    await expect(
+                        owlRouter.connect(user1).transferETH(user2.address, false, 'invalid', { value: ethers.utils.parseEther('1') })
+                    ).to.be.revertedWith('OwlRouter: invalid mode');
+                });
         
                 it ('should apply custom mode discounts correctly', async() => {
                     const mode = 'twelve';
@@ -88,6 +94,8 @@ describe('OwlRouter', () => {
         
                 beforeEach(async() => {
                     await owlRouter.setHolderDiscount([ 0 ], [ ethers.utils.parseEther('0') ]);
+                    await owlRouter.setTaxFee('transfer', routerTransferTax);
+                    await owlRouter.setTaxWallet(manager.address);
         
                     // send OWL to user1
                     amountOWL = ethers.utils.parseEther('10000');
@@ -98,7 +106,8 @@ describe('OwlRouter', () => {
                     amountOWL = await owlRouter.balanceOf(user1.address);
                 });
         
-                it ('should transfer ETH', async() => {
+                it ('should transfer ETH with no tax fee', async() => {
+                    await owlRouter.setTaxFee('transfer', '0');
                     const balanceBefore = await user2.getBalance();
                     const amount = ethers.utils.parseEther('1');
         
@@ -113,12 +122,11 @@ describe('OwlRouter', () => {
                     const amount = ethers.utils.parseEther('1');
                     
                     // router fee
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
                     let tax = amount.mul(routerTransferTax).div(100000);
-                    const ownerBefore = await owner.getBalance();
+                    const managerBefore = await manager.getBalance();
         
                     // console.log('tax', ethers.utils.formatEther(tax));
-                    // console.log('ownerBefore', ethers.utils.formatEther(ownerBefore));
+                    // console.log('managerBefore', ethers.utils.formatEther(managerBefore));
                     
                     // send eth to router
                     await owlRouter.connect(user1).transferETH(user2.address, false, mode, { value: amount });
@@ -126,7 +134,7 @@ describe('OwlRouter', () => {
                     // console.log('ownerAfter', ethers.utils.formatEther(await owner.getBalance()));
                     
                     expect(await user2.getBalance()).to.equal(user2BalanceBefore.add(amount.sub(tax)));
-                    expect(await owner.getBalance()).to.equal(ownerBefore.add(tax));
+                    expect(await manager.getBalance()).to.equal(managerBefore.add(tax));
                 });
         
                 it ('should transfer ETH paying with OWL', async() => {
@@ -134,7 +142,6 @@ describe('OwlRouter', () => {
                     const amount = ethers.utils.parseEther('1');
                     
                     // router fee
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
                     let tax = amount.mul(routerTransferTax).div(100000);
                     // apply OWL tax discount
                     tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
@@ -146,8 +153,8 @@ describe('OwlRouter', () => {
         
                     // check if user2 received eth
                     expect(await user2.getBalance()).to.equal(user2BalanceBefore.add(amount));
-                    // check if owner received OWL tax
-                    expect(await owlRouter.balanceOf(owner.address)).to.equal(tax);
+                    // check if manager received OWL tax
+                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
                 });
         
                 it ('should transfer DAI with fee', async() => {
@@ -155,11 +162,7 @@ describe('OwlRouter', () => {
                     const amountDAI = ethers.utils.parseEther('300');
                     await daiToken.transfer(user1.address, amountDAI);
         
-                    // set tax wallet
-                    await owlRouter.setTaxWallet(manager.address);
-        
                     // router fee
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
                     let tax = amountDAI.mul(routerTransferTax).div(100000);
                     
                     // send dai to user2 through router
@@ -176,11 +179,7 @@ describe('OwlRouter', () => {
                     const amountDAI = ethers.utils.parseEther('300');
                     await daiToken.transfer(user1.address, amountDAI);
                     
-                    // set tax wallet
-                    await owlRouter.setTaxWallet(manager.address);
-        
                     // router fee
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
                     let tax = amountDAI.mul(routerTransferTax).div(100000);
                     // apply OWL tax discount
                     tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
@@ -206,11 +205,7 @@ describe('OwlRouter', () => {
                     await owlToken.transfer(user1.address, amountOWL);
                     amountOWL = await owlToken.balanceOf(user1.address);
         
-                    // set tax wallet
-                    await owlRouter.setTaxWallet(manager.address);
-        
                     // router fee
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
                     let tax = amountOWL.mul(routerTransferTax).div(100000);
                     
                     // send dai to user2 through router
@@ -233,11 +228,7 @@ describe('OwlRouter', () => {
                     await owlToken.transfer(user1.address, amountOWL);
                     amountOWL = await owlToken.balanceOf(user1.address);
         
-                    // set tax wallet
-                    await owlRouter.setTaxWallet(manager.address);
-        
                     // router fee
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
                     let tax = amountOWL.mul(routerTransferTax).div(100000);
                     tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
         
@@ -260,9 +251,6 @@ describe('OwlRouter', () => {
                     // send some DAI to user1
                     const amountDAI = ethers.utils.parseEther('300');
                     await daiToken.transfer(user1.address, amountDAI);
-        
-                    // set tax wallet
-                    await owlRouter.setTaxWallet(manager.address);
         
                     // router fee
                     let fee = '12000'
@@ -766,23 +754,59 @@ describe('OwlRouter', () => {
                     // tax wallet received tax in OWL
                     expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(taxOut);
                 });
+
+                it ('should revert when trying to use a non-existent mode', async() => {
+                    const amount = ethers.utils.parseEther('1');
+                    await expect(
+                        owlRouter.connect(user1).transferETHWithCustomFee(user2.address, false, 'invalid', manager.address, { value: amount })
+                    ).to.be.revertedWith('OwlRouter: invalid mode');
+                });
         
-                it ('should not transfer if using invalid app address', async() => {
+                it ('should revert if using invalid app address', async() => {
                     const amount = ethers.utils.parseEther('1');
                     await expect(
                         owlRouter.connect(user1).transferETHWithCustomFee(user2.address, false, mode, owner.address, { value: amount })
-                    ).to.be.revertedWith('OwlRouter: custom tax fee is not enabled');
+                    ).to.be.revertedWith('OwlRouter: invalid mode');
+                });
+
+                it ('should transfer correctly when setting custom fee to 0', async() => {
+                    await owlRouter.connect(manager).setCustomFee(mode, '0');
+
+                    const amount = ethers.utils.parseEther('1000');
+                    daiToken.transfer(user1.address, amount);
+                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+
+                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, false, mode, manager.address);
+                    
+                    // user1 sends dai
+                    expect(await daiToken.balanceOf(user1.address)).to.equal(0);
+                    // user2 receives dai
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(amount);
+                    // manager receives 0 tax
+                    expect(await daiToken.balanceOf(manager.address)).to.equal(0);
+                    
+                    // tax wallet receives normal tax
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
+                });
+
+                it ('should revert when requesting with invalid custom fee mode', async() => {
+                    const amount = ethers.utils.parseEther('1');
+                    await expect(
+                        owlRouter.connect(user1).transferETHWithCustomFee(user2.address, false, 'invalid', manager.address, { value: amount })
+                    ).to.be.revertedWith('OwlRouter: invalid mode');
                 });
             }
-        }
+        },
     ];
 
     [
-        // 'Deployment',
-        // 'Transfer',
-        // 'Swap',
-        // 'Holder discount',
-        'Custom Taxes'
+        'Deployment',
+        'Transfer',
+        'Swap',
+        'Holder discount',
+        'Custom Taxes',
     ].forEach(groupName => {
         if (groups.find(g => g.name === groupName)) {
             const tests = groups.find(g => g.name === groupName).tests;
