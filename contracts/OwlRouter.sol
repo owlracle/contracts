@@ -204,8 +204,8 @@ contract OwlRouter is Context, Ownable {
      * @dev Sets the referral bonus.
      * @param referralBonus The referral bonus to set.
      * @notice The referral bonus is represented in 1e3, so 1000 = 1%.
-     * @notice The referrer will receive the referral bonus of the tax fee when their referral pays the tax fee with OWL.
-     * @notice The referee will receive the referral bonus of the tax discount when they pay the tax fee with OWL.
+     * @notice The referrer will receive the referral bonus of the tax fee when their referee pays the tax fee with OWL.
+     * @notice The referee will receive the referral bonus as tax discount when they pay the tax fee with OWL.
     */
     function setReferralBonus(uint256 referralBonus) external onlyOwner {
         require(referralBonus >= 0 && referralBonus <= 100000, "OwlRouter: referral bonus must be between 0 and 100000");
@@ -221,11 +221,19 @@ contract OwlRouter is Context, Ownable {
         return _referralBonus;
     }
 
+    /**
+     * @dev Set a wallet as the referrer for the sender.
+     * @param referral The wallet to set as the referrer.
+     */
     function setReferral(address referral) external {
-        require(_referrals[_msgSender()] == address(0), "OwlRouter: sender already has a referral");
         _referrals[_msgSender()] = referral;
     }
 
+    /**
+     * @dev Returns the referrer for a wallet.
+     * @param wallet The wallet to get the referrer for.
+     * @return The referrer for the specified wallet.
+     */
     function getReferral(address wallet) external view returns (address) {
         return _referrals[wallet];
     }
@@ -685,6 +693,7 @@ contract OwlRouter is Context, Ownable {
      * @notice Holder discounts are applied.
      * @notice Pay with OWL discount is applied.
      * @notice The OWL balance of the sender is used to pay the tax fee, and the OWL balance of the tax wallet is increased. No actual OWL tokens are transfered.
+     * @notice The referral bonus is applied.
      */
     function _sendTaxOWL(address tokenAddress, uint256 amount, string memory mode) private returns (uint256) {
         require(_taxFeeEnabled[mode], "OwlRouter: invalid mode");
@@ -726,7 +735,9 @@ contract OwlRouter is Context, Ownable {
 
         // transfer OWL to tax wallet
         _owlBalances[_msgSender()] = _owlBalances[_msgSender()].sub(owlAmount);
-        _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(owlAmount);
+        // transfer referral bonus to referrer and sender
+        uint256 taxAfter = _processReferral(owlAmount);
+        _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(taxAfter);
         return owlAmount;
     }
 
@@ -868,6 +879,25 @@ contract OwlRouter is Context, Ownable {
         // transfer OWL from app wallet to tax wallet
         _owlBalances[appWallet] = _owlBalances[appWallet].sub(owlAmount);
         _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(owlAmount);
+    }
+
+    /**
+     * @dev Processes the referral fee.
+     * @param amount The amount of tokens that will be paid as a tax fee.
+     * @notice The referral fee is split in half and sent to the referrer and the sender.
+     * @notice The bonus is sent to OWL balance in the contract.
+     * @return This can only be called when using OWL to pay the tax fee and with no custom fee.
+     */
+    function _processReferral(uint256 amount) private returns (uint256) {
+        address referrer = _referrals[_msgSender()];
+        if (referrer == address(0)) {
+            return amount;
+        }
+
+        uint256 referralDiscount = amount.mul(_referralBonus).div(100000); // 1000 == 1%
+        _owlBalances[referrer] = _owlBalances[referrer].add(referralDiscount.div(2));
+        _owlBalances[_msgSender()] = _owlBalances[_msgSender()].add(referralDiscount.div(2));
+        return amount.sub(referralDiscount);
     }
 
     // --- default contract functions ---

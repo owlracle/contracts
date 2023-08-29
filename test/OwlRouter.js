@@ -799,6 +799,69 @@ describe('OwlRouter', () => {
                 });
             }
         },
+        {
+            name: 'Referral',
+            tests: async() => {
+
+                let mode = 'mode';
+                let routerTax = 1000;
+                let amountOWLDeposited;
+                let amountOWLWallet;
+                let referralBonus = 20000;
+        
+                beforeEach(async() => {
+                    [ owner, taxWallet, referrer, user1, user2 ] = await ethers.getSigners();
+                    await owlRouter.setTaxFee(mode, routerTax.toString());
+                    await owlRouter.setTaxWallet(taxWallet.address);
+        
+                    await owlRouter.setHolderDiscount([0], [ethers.utils.parseEther('0')]);
+                    await owlRouter.setTaxDiscount('0');
+        
+                    // send OWL to user1 and deposit
+                    const amountOWL = ethers.utils.parseEther('10000');
+                    await owlToken.transfer(user1.address, amountOWL.mul(2));
+                    await owlToken.connect(user1).approve(owlRouter.address, amountOWL);
+                    await owlRouter.connect(user1).deposit(amountOWL);
+                    amountOWLDeposited = await owlRouter.balanceOf(user1.address);
+                    amountOWLWallet = await owlToken.balanceOf(user1.address);
+
+                    await owlRouter.connect(user1).setReferral(referrer.address);
+                    await owlRouter.setReferralBonus(referralBonus);
+                });
+        
+                it ('should correctly set referral wallet', async() => {
+                    expect(await owlRouter.getReferral(user1.address)).to.equal(referrer.address);
+                });
+
+                it ('should transfer DAI with referral bonus', async() => {
+                    // send DAI to user1
+                    const amount = ethers.utils.parseEther('1000');
+                    await daiToken.transfer(user1.address, amount);
+                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+
+                    await owlRouter.connect(user1).transfer(user2.address, daiAddress, amount, true, mode);
+                    
+                    // user1 sends DAI
+                    expect(await daiToken.balanceOf(user1.address)).to.equal(0);
+                    // user2 receives DAI
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(amount);
+                    
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    let referrerTax = tax.mul(referralBonus).div(100000).div(2);
+                    
+                    // referrer receives referral bonus
+                    expect(await owlRouter.balanceOf(referrer.address)).to.equal(referrerTax);
+                    // user1 receives referral bonus
+                    expect(await owlRouter.balanceOf(user1.address)).to.equal(amountOWLDeposited.sub(tax).add(referrerTax));
+                });
+            }
+        },
+        {
+            name: 'Real number tests',
+            tests: async() => {
+            }
+        }
     ];
 
     [
@@ -807,6 +870,7 @@ describe('OwlRouter', () => {
         'Swap',
         'Holder discount',
         'Custom Taxes',
+        'Referral',
     ].forEach(groupName => {
         if (groups.find(g => g.name === groupName)) {
             const tests = groups.find(g => g.name === groupName).tests;
