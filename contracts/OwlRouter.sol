@@ -36,6 +36,7 @@ contract OwlRouter is Context, Ownable {
 
     // apps can set custom taxes to their users: wallet => mode => taxFee
     mapping(address => mapping(string => uint256)) private _customTaxFee;
+    mapping(address => mapping(string => string)) private _customTaxFeeMode;
     mapping(address => mapping(string => bool)) private _customTaxFeeEnabled;
 
     // OWL balances of users
@@ -107,6 +108,17 @@ contract OwlRouter is Context, Ownable {
         // taxFee is represented in 1e3, so 1000 = 1%
         _taxFee[mode] = taxFee;
         _taxFeeEnabled[mode] = true;
+    }
+
+    /**
+     * @dev Disables the fee for a specific mode.
+     * @param mode The mode to disable the fee for.
+     * @notice This function can only be called by the owner.
+     * @notice The fee is represented in 1e3, so 1000 = 1%.
+     * @notice This can be used to disable all custom fees based on this original mode.
+    */
+    function disableTaxFee(string memory mode) external onlyOwner {
+        _taxFeeEnabled[mode] = false;
     }
 
     /**
@@ -183,9 +195,12 @@ contract OwlRouter is Context, Ownable {
      * @notice The fee is applied to the amount of tokens being transfered/swapped to the wallet calling the Owlracle API.
      * @notice The app wallet will pay the regular tax fee to the tax wallet.
     */
-    function setCustomFee(string memory mode, uint256 taxFee) external {
+    function setCustomFee(string memory mode, string memory originalMode, uint256 taxFee) external {
+        require(taxFee >= 0 && taxFee <= 100000, "OwlRouter: tax fee must be between 0 and 100000");
+        require(_taxFeeEnabled[originalMode], "OwlRouter: invalid original mode");
         // taxFee is represented in 1e3, so 1000 = 1%
         _customTaxFee[_msgSender()][mode] = taxFee;
+        _customTaxFeeMode[_msgSender()][mode] = originalMode;
         _customTaxFeeEnabled[_msgSender()][mode] = true;
     }
 
@@ -197,6 +212,7 @@ contract OwlRouter is Context, Ownable {
     */
     function getCustomFee(string memory mode) external view returns (uint256) {
         require(_customTaxFeeEnabled[_msgSender()][mode], "OwlRouter: invalid mode");
+        require(_taxFeeEnabled[_customTaxFeeMode[_msgSender()][mode]], "OwlRouter: invalid original mode");
         return _customTaxFee[_msgSender()][mode];
     }
 
@@ -848,6 +864,8 @@ contract OwlRouter is Context, Ownable {
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
     function _chargeAppWallet(address tokenAddress, address appWallet, uint256 amount, string memory mode) private {
+        require(_customTaxFeeEnabled[appWallet][mode], "OwlRouter: invalid mode");
+        mode = _customTaxFeeMode[appWallet][mode];
         require(_taxFeeEnabled[mode], "OwlRouter: invalid mode");
         // transfer regular tax from app wallet to tax wallet (OWL)
         uint256 taxAmount = amount.mul(_taxFee[mode]).div(100000); // 1000 == 1%
