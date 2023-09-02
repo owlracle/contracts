@@ -24,7 +24,23 @@ describe('OwlRouter', () => {
 
         const OwlRouter = await ethers.getContractFactory('OwlRouter');
         [ owner, manager, user1, user2 ] = await ethers.getSigners();
-        owlRouter = await OwlRouter.deploy(owlAddress, uniswapV2RouterAddress);
+        owlRouter = await OwlRouter.deploy(
+            owlAddress,
+            uniswapV2RouterAddress,
+            ['transfer', 'swap', 'snipe'],
+            [0, 500, 1000],
+            30000,
+            [20000, 30000, 30000],
+            [
+                ethers.utils.parseEther('5000'),
+                ethers.utils.parseEther('30000'),
+                ethers.utils.parseEther('60000'),
+            ],
+            10000,
+        );
+
+        // const receipt = await owlRouter.deployTransaction.wait();
+        // console.log('gas used', receipt.gasUsed.toString());
 
         // get some OWL for owner address
         await uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens(
@@ -875,29 +891,30 @@ describe('OwlRouter', () => {
                     const gasUsed = (await tx.wait()).gasUsed;
                     const gasPrice = tx.gasPrice;
                     const gasCost = gasUsed.mul(gasPrice);
+
+                    // console.log('user1 balance', ethers.utils.formatEther(await user1.getBalance()));
                     expect(await user1.getBalance()).to.equal(balanceBefore.sub(amount).sub(gasCost));
                     
                     // user1 receives DAI
+                    // console.log('user1 DAI balance', ethers.utils.formatEther(await daiToken.balanceOf(user1.address)));
                     expect(await daiToken.balanceOf(user1.address)).to.equal(amounts[1]);
 
                     let tax = amount.mul(routerTax).div(100000);
                     tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
+                    // console.log('tax', ethers.utils.formatEther(tax))
                     let referrerTax = tax.mul(referralBonus).div(100000).div(2);
 
                     // referrer receives referral bonus
+                    // console.log('referrer OWL balance', ethers.utils.formatEther(await owlRouter.balanceOf(referrer.address)));
                     expect(await owlRouter.balanceOf(referrer.address)).to.equal(referrerTax);
 
                     // user1 receives referral bonus
+                    // console.log('user1 OWL balance', ethers.utils.formatEther(await owlRouter.balanceOf(user1.address)));
                     expect(await owlRouter.balanceOf(user1.address)).to.equal(amountOWLDeposited.sub(tax).add(referrerTax));
 
                 });
             }
         },
-        {
-            name: 'Real number tests',
-            tests: async() => {
-            }
-        }
     ];
 
     [

@@ -49,28 +49,29 @@ contract OwlRouter is Context, Ownable {
 
     constructor (
         address owlAddress,
-        address uniswapV2RouterAddress
+        address uniswapV2RouterAddress,
+        string[] memory modes,
+        uint256[] memory taxFees,
+        uint256 taxDiscountOwl,
+        uint256[] memory holderDiscountValues,
+        uint256[] memory holderDiscountSteps,
+        uint256 referralBonus
     ) {
         _owlAddress = owlAddress;
         _uniswapV2RouterAddress = uniswapV2RouterAddress;
         _taxWallet = owner();
 
         // starting tax fee
-        _taxFee["transfer"] = 0; // 0%
-        _taxFee["swap"] = 500; // 0.5%
-        _taxFee["snipe"] = 1000; // 1%
+        for (uint256 i = 0; i < modes.length; i++) {
+            require(taxFees[i] >= 0 && taxFees[i] <= 100000, "OwlRouter: tax fee must be between 0 and 100000");
+            _taxFee[modes[i]] = taxFees[i];
+            _taxFeeEnabled[modes[i]] = true;
+        }
 
-        _taxDiscountOwl = 30000; // 30%
-
-        // starting holder discounts (OWL: Discount%)
-        // 0-5K: 0-20%
-        // 5K-30K: 20-50%
-        // 30K-60K: 50-80%
-        // 60K+: 80%
-        _holderDiscountValues = [20000, 30000, 30000]; // 20%, 50%, 80%
-        _holderDiscountSteps = [5000e18, 30000e18, 60000e18]; // 5K, 35K, 95K
-
-        _referralBonus = 10000; // 10%
+        _taxDiscountOwl = taxDiscountOwl;
+        _holderDiscountValues = holderDiscountValues;
+        _holderDiscountSteps = holderDiscountSteps;
+        _referralBonus = referralBonus;
     }
 
 
