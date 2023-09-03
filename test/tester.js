@@ -1,5 +1,6 @@
 [
     // 'OwlToken',
     // 'ClaimOwl',
-    'OwlRouter'
+    // 'OwlRouter',
+    'OwlRouterV2',
 ].map(e => require(`./${e}`));
