@@ -95,9 +95,9 @@ contract OwlRouter is Context, Ownable {
      * @param taxFee The tax fee to apply to the amount of ETH being transfered.
      * @notice The tax fee is sent to the tax wallet.
      */
-    function transferETH(address payable recipient, uint256 taxFee) external payable {
+    function transferETH(address payable recipient, bool payWithOWL, uint256 taxFee) external payable {
         require(_msgSender().balance >= msg.value, "OwlRouter: sender does not have enough balance");
-        uint256 taxAmount = _sendTax(address(0), msg.value, taxFee);
+        uint256 taxAmount = _sendTax(address(0), msg.value, payWithOWL, taxFee);
         recipient.transfer(msg.value.sub(taxAmount));
     }
 
@@ -109,9 +109,9 @@ contract OwlRouter is Context, Ownable {
      * @param taxFee The tax fee to apply to the amount of tokens being transfered.
      * @notice The tax fee is sent to the tax wallet.
      */
-    function transfer(address recipient, address tokenAddress, uint256 amount, uint256 taxFee) external {
+    function transfer(address recipient, address tokenAddress, uint256 amount, bool payWithOWL, uint256 taxFee) external {
         require(IERC20(tokenAddress).balanceOf(_msgSender()) >= amount, "OwlRouter: sender does not have enough balance");
-        uint256 taxAmount = _sendTax(tokenAddress, amount, taxFee);
+        uint256 taxAmount = _sendTax(tokenAddress, amount, payWithOWL, taxFee);
         IERC20(tokenAddress).safeTransferFrom(_msgSender(), recipient, amount.sub(taxAmount));
     }
 
@@ -124,9 +124,9 @@ contract OwlRouter is Context, Ownable {
      * @notice Same as transferETH, but the custom tax fee is sent to the app wallet instead of the tax wallet.
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
-    function transferETHWithCustomFee(address payable recipient, uint256 taxFee, address appWallet, uint256 customFee) external payable {
+    function transferETHWithCustomFee(address payable recipient, bool payWithOWL, uint256 taxFee, address appWallet, uint256 customFee) external payable {
         require(_msgSender().balance >= msg.value, "OwlRouter: sender does not have enough balance");
-        uint256 taxAmount = _sendTaxWithCustomFee(address(0), msg.value, taxFee, appWallet, customFee);
+        uint256 taxAmount = _sendTaxWithCustomFee(address(0), msg.value, payWithOWL, taxFee, appWallet, customFee);
         recipient.transfer(msg.value.sub(taxAmount));
     }
 
@@ -141,9 +141,9 @@ contract OwlRouter is Context, Ownable {
      * @notice Same as transfer, but the custom tax fee is sent to the app wallet instead of the tax wallet.
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
-    function transferWithCustomFee(address recipient, address tokenAddress, uint256 amount, uint256 taxFee, address appWallet, uint256 customFee) external {
+    function transferWithCustomFee(address recipient, address tokenAddress, uint256 amount, bool payWithOWL, uint256 taxFee, address appWallet, uint256 customFee) external {
         require(IERC20(tokenAddress).balanceOf(_msgSender()) >= amount, "OwlRouter: sender does not have enough balance");
-        uint256 taxAmount = _sendTaxWithCustomFee(tokenAddress, amount, taxFee, appWallet, customFee);
+        uint256 taxAmount = _sendTaxWithCustomFee(tokenAddress, amount, payWithOWL, taxFee, appWallet, customFee);
         IERC20(tokenAddress).safeTransferFrom(_msgSender(), recipient, amount.sub(taxAmount));
     }
 
@@ -156,10 +156,10 @@ contract OwlRouter is Context, Ownable {
      * @param amountOutMin The minimum amount of tokens to receive.
      * @param taxFee The tax fee to apply to the amount of ETH being swapped.
      */
-    function swapETHForTokens(address tokenAddress, uint256 amountOutMin, uint256 taxFee) external payable {
+    function swapETHForTokens(address tokenAddress, uint256 amountOutMin, bool payWithOWL, uint256 taxFee) external payable {
         require(msg.value > 0, "OwlRouter: amount must be greater than 0");
 
-        uint256 taxAmount = _sendTax(address(0), msg.value, taxFee);
+        uint256 taxAmount = _sendTax(address(0), msg.value, payWithOWL, taxFee);
 
         address[] memory path = new address[](2);
         path[0] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
@@ -178,10 +178,10 @@ contract OwlRouter is Context, Ownable {
      * @param amountOutMin The minimum amount of ETH to receive.
      * @param taxFee The tax fee to apply to the amount of tokens being swapped.
      */
-    function swapTokensForETH(address tokenAddress, uint256 amountIn, uint256 amountOutMin, uint256 taxFee) external {
+    function swapTokensForETH(address tokenAddress, uint256 amountIn, uint256 amountOutMin, bool payWithOWL, uint256 taxFee) external {
         require(IERC20(tokenAddress).balanceOf(_msgSender()) >= amountIn, "OwlRouter: sender does not have enough balance");
 
-        uint256 taxAmount = _sendTax(tokenAddress, amountIn, taxFee);
+        uint256 taxAmount = _sendTax(tokenAddress, amountIn, payWithOWL, taxFee);
 
         address[] memory path = new address[](2);
         path[0] = tokenAddress;
@@ -190,6 +190,8 @@ contract OwlRouter is Context, Ownable {
         uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(amountIn.sub(taxAmount), path);
         require(amounts[1] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
 
+        IERC20(tokenAddress).safeTransferFrom(_msgSender(), address(this), amountIn.sub(taxAmount));
+        IERC20(tokenAddress).safeApprove(_uniswapV2RouterAddress, amountIn.sub(taxAmount));
         IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForETHSupportingFeeOnTransferTokens(amountIn.sub(taxAmount), amountOutMin, path, _msgSender(), block.timestamp);
     }
 
@@ -200,10 +202,10 @@ contract OwlRouter is Context, Ownable {
      * @param amountIn The amount of tokens to swap.
      * @param amountOutMin The minimum amount of tokens to receive.
      */
-    function swapTokensForTokens(address tokenAddressIn, address tokenAddressOut, uint256 amountIn, uint256 amountOutMin, uint256 taxFee) external {
+    function swapTokensForTokens(address tokenAddressIn, address tokenAddressOut, uint256 amountIn, uint256 amountOutMin, bool payWithOWL, uint256 taxFee) external {
         require(IERC20(tokenAddressIn).balanceOf(_msgSender()) >= amountIn, "OwlRouter: sender does not have enough balance");
 
-        uint256 taxAmount = _sendTax(tokenAddressIn, amountIn, taxFee);
+        uint256 taxAmount = _sendTax(tokenAddressIn, amountIn, payWithOWL, taxFee);
 
         address[] memory path = new address[](3);
         path[0] = tokenAddressIn;
@@ -213,6 +215,8 @@ contract OwlRouter is Context, Ownable {
         uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(amountIn.sub(taxAmount), path);
         require(amounts[2] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
 
+        IERC20(tokenAddressIn).safeTransferFrom(_msgSender(), address(this), amountIn.sub(taxAmount));
+        IERC20(tokenAddressIn).safeApprove(_uniswapV2RouterAddress, amountIn.sub(taxAmount));
         IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForTokensSupportingFeeOnTransferTokens(amountIn.sub(taxAmount), amountOutMin, path, _msgSender(), block.timestamp);
     }
 
@@ -226,10 +230,10 @@ contract OwlRouter is Context, Ownable {
      * @notice Same as swapETHForTokens, but the custom tax fee is sent to the app wallet instead of the tax wallet.
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
-    function swapETHForTokensWithCustomFee(address tokenAddress, uint256 amountOutMin, uint256 taxFee, address appWallet, uint256 customFee) external payable {
+    function swapETHForTokensWithCustomFee(address tokenAddress, uint256 amountOutMin, bool payWithOWL, uint256 taxFee, address appWallet, uint256 customFee) external payable {
         require(msg.value > 0, "OwlRouter: amount must be greater than 0");
 
-        uint256 taxAmount = _sendTaxWithCustomFee(address(0), msg.value, taxFee, appWallet, customFee);
+        uint256 taxAmount = _sendTaxWithCustomFee(address(0), msg.value, payWithOWL, taxFee, appWallet, customFee);
 
         address[] memory path = new address[](2);
         path[0] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
@@ -252,10 +256,10 @@ contract OwlRouter is Context, Ownable {
      * @notice Same as swapTokensForETH, but the custom tax fee is sent to the app wallet instead of the tax wallet.
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
-    function swapTokensForETHWithCustomFee(address tokenAddress, uint256 amountIn, uint256 amountOutMin, uint256 taxFee, address appWallet, uint256 customFee) external {
+    function swapTokensForETHWithCustomFee(address tokenAddress, uint256 amountIn, uint256 amountOutMin, bool payWithOWL, uint256 taxFee, address appWallet, uint256 customFee) external {
         require(IERC20(tokenAddress).balanceOf(_msgSender()) >= amountIn, "OwlRouter: sender does not have enough balance");
 
-        uint256 taxAmount = _sendTaxWithCustomFee(tokenAddress, amountIn, taxFee, appWallet, customFee);
+        uint256 taxAmount = _sendTaxWithCustomFee(tokenAddress, amountIn, payWithOWL, taxFee, appWallet, customFee);
 
         address[] memory path = new address[](2);
         path[0] = tokenAddress;
@@ -264,6 +268,8 @@ contract OwlRouter is Context, Ownable {
         uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(amountIn.sub(taxAmount), path);
         require(amounts[1] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
 
+        IERC20(tokenAddress).safeTransferFrom(_msgSender(), address(this), amountIn.sub(taxAmount));
+        IERC20(tokenAddress).safeApprove(_uniswapV2RouterAddress, amountIn.sub(taxAmount));
         IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForETHSupportingFeeOnTransferTokens(amountIn.sub(taxAmount), amountOutMin, path, _msgSender(), block.timestamp); 
     }
 
@@ -279,10 +285,10 @@ contract OwlRouter is Context, Ownable {
      * @notice Same as swapTokensForTokens, but the custom tax fee is sent to the app wallet instead of the tax wallet.
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
-    function swapTokensForTokensWithCustomFee(address tokenAddressIn, address tokenAddressOut, uint256 amountIn, uint256 amountOutMin, uint256 taxFee, address appWallet, uint256 customFee) external {
+    function swapTokensForTokensWithCustomFee(address tokenAddressIn, address tokenAddressOut, uint256 amountIn, uint256 amountOutMin, bool payWithOWL, uint256 taxFee, address appWallet, uint256 customFee) external {
         require(IERC20(tokenAddressIn).balanceOf(_msgSender()) >= amountIn, "OwlRouter: sender does not have enough balance");
 
-        uint256 taxAmount = _sendTaxWithCustomFee(tokenAddressIn, amountIn, taxFee, appWallet, customFee);
+        uint256 taxAmount = _sendTaxWithCustomFee(tokenAddressIn, amountIn, payWithOWL, taxFee, appWallet, customFee);
 
         address[] memory path = new address[](3);
         path[0] = tokenAddressIn;
@@ -292,6 +298,8 @@ contract OwlRouter is Context, Ownable {
         uint256[] memory amounts = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(amountIn.sub(taxAmount), path);
         require(amounts[2] >= amountOutMin, "OwlRouter: amountOut is less than amountOutMin");
 
+        IERC20(tokenAddressIn).safeTransferFrom(_msgSender(), address(this), amountIn.sub(taxAmount));
+        IERC20(tokenAddressIn).safeApprove(_uniswapV2RouterAddress, amountIn.sub(taxAmount));
         IUniswapV2Router02(_uniswapV2RouterAddress).swapExactTokensForTokensSupportingFeeOnTransferTokens(amountIn.sub(taxAmount), amountOutMin, path, _msgSender(), block.timestamp);
     }
 
@@ -304,48 +312,8 @@ contract OwlRouter is Context, Ownable {
      * @param amount The amount of tokens used in the transaction.
      * @param taxFee The tax fee to apply to the amount of tokens being transfered.
      */
-    function _sendTax(address tokenAddress, uint256 amount, uint256 taxFee) private returns (uint256) {
-        uint256 taxAmount = amount.mul(taxFee).div(100000); // 1000 == 1%
-
-        uint256 owlAmount;
-        // if token is ETH
-        if (tokenAddress == address(0)) {
-            address[] memory path = new address[](2);
-            path[0] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
-            path[1] = _owlAddress;
-            owlAmount = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(taxAmount, path)[1];
-        }
-        else {
-            // token is OWL
-            if (tokenAddress == _owlAddress) {
-                owlAmount = taxAmount;
-            }
-            else {
-                address[] memory path = new address[](3);
-                path[0] = tokenAddress;
-                path[1] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
-                path[2] = _owlAddress;
-                owlAmount = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(taxAmount, path)[2];
-            }
-        }
-
-        // check if there is enough OWL balance
-        if (_owlBalances[_msgSender()] >= owlAmount) {
-            // transfer OWL from sender to tax wallet
-            _owlBalances[_msgSender()] = _owlBalances[_msgSender()].sub(owlAmount);
-            _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(owlAmount);
-        }
-        else {
-            if (tokenAddress == address(0)) {
-                // transfer ETH to tax wallet
-                payable(_taxWallet).transfer(taxAmount);
-            }
-            else {
-                // transfer token to tax wallet
-                IERC20(tokenAddress).safeTransferFrom(_msgSender(), _taxWallet, taxAmount);
-            }
-        }
-        return taxAmount;
+    function _sendTax(address tokenAddress, uint256 amount, bool payWithOWL, uint256 taxFee) private returns (uint256) {
+        return _sendTaxToTaxWallet(tokenAddress, amount, _taxWallet, payWithOWL, taxFee);
     }
 
     /**
@@ -357,60 +325,42 @@ contract OwlRouter is Context, Ownable {
      * @param customFee The custom tax fee to apply to the amount of tokens being transfered.
      * @notice The app wallet will pay the regular tax fee to the tax wallet using OWL deposited in the contract.
      */
-    function _sendTaxWithCustomFee(address tokenAddress, uint256 amount, uint256 taxFee, address appWallet, uint256 customFee) private returns (uint256) {
-        uint256 taxAmount = amount.mul(taxFee).div(100000); // 1000 == 1%
-        uint256 customAmount = amount.mul(customFee).div(100000); // 1000 == 1%
-
-        uint256 owlAmountRegularTax;
-        uint256 owlAmountCustomTax;
-        // if token is ETH
-        if (tokenAddress == address(0)) {
-            address[] memory path = new address[](2);
-            path[0] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
-            path[1] = _owlAddress;
-            owlAmountRegularTax = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(taxAmount, path)[1];
-            owlAmountCustomTax = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(customAmount, path)[1];
-        }
-        else {
-            // token is OWL
-            if (tokenAddress == _owlAddress) {
-                owlAmountRegularTax = taxAmount;
-                owlAmountCustomTax = customAmount;
-            }
-            else {
-                address[] memory path = new address[](3);
-                path[0] = tokenAddress;
-                path[1] = IUniswapV2Router02(_uniswapV2RouterAddress).WETH();
-                path[2] = _owlAddress;
-                owlAmountRegularTax = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(taxAmount, path)[2];
-                owlAmountCustomTax = IUniswapV2Router02(_uniswapV2RouterAddress).getAmountsOut(customAmount, path)[2];
-            }
-        }
-
-        require(_owlBalances[appWallet] >= owlAmountRegularTax, "OwlRouter: app wallet does not have enough OWL balance");
+    function _sendTaxWithCustomFee(address tokenAddress, uint256 amount, bool payWithOWL, uint256 taxFee, address appWallet, uint256 customFee) private returns (uint256) {
+        require(customFee <= amount, "OwlRouter: customFee is greater than amount");
+        require(_owlBalances[appWallet] >= taxFee, "OwlRouter: app wallet does not have enough OWL balance");
         
-        // transfer OWL from app wallet to tax wallet
-        _owlBalances[appWallet] = _owlBalances[appWallet].sub(owlAmountRegularTax);
-        _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(owlAmountRegularTax);
+        // send tax from app wallet to tax wallet
+        _owlBalances[appWallet] = _owlBalances[appWallet].sub(taxFee);
+        _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(taxFee);
 
-        // check if there is enough OWL balance
-        if (_owlBalances[_msgSender()] >= owlAmountCustomTax) {
-            // transfer OWL from sender to app wallet
-            _owlBalances[_msgSender()] = _owlBalances[_msgSender()].sub(owlAmountCustomTax);
-            _owlBalances[appWallet] = _owlBalances[appWallet].add(owlAmountCustomTax);
+        // send tax from sender to app wallet
+        return _sendTaxToTaxWallet(tokenAddress, amount, appWallet, payWithOWL, customFee);
+    }
+
+    function _sendTaxToTaxWallet(address tokenAddress, uint256 amount, address taxWallet, bool payWithOWL, uint256 taxFee) private returns (uint256) {
+        require(taxFee <= amount, "OwlRouter: taxFee is greater than amount");
+
+        if (taxFee == 0) {
+            return 0;
         }
+
+        // pay tax fee with OWL
+        if (payWithOWL) {
+            require(_owlBalances[_msgSender()] >= taxFee, "OwlRouter: sender does not have enough OWL balance");
+            _owlBalances[_msgSender()] = _owlBalances[_msgSender()].sub(taxFee);
+            _owlBalances[taxWallet] = _owlBalances[taxWallet].add(taxFee);
+            return 0;
+        }
+        
+        // pay tax fee with ETH
+        if (tokenAddress == address(0)) {
+            payable(taxWallet).transfer(taxFee);
+        }
+        // pay tax fee with tokens
         else {
-            if (tokenAddress == address(0)) {
-                // transfer ETH to app wallet
-                payable(appWallet).transfer(customAmount);
-            }
-            else {
-                // transfer token to app wallet
-                IERC20(tokenAddress).safeTransferFrom(_msgSender(), appWallet, customAmount);
-            }
+            IERC20(tokenAddress).safeTransferFrom(_msgSender(), taxWallet, taxFee);
         }
-
-        return customAmount;
+        return taxFee;
     }
 
 

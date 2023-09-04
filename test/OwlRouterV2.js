@@ -7,6 +7,7 @@ describe('OwlRouter', () => {
     
     let owner;
     let manager;
+    let taxWallet;
     let user1;
     let user2;
     let owlToken;
@@ -22,22 +23,14 @@ describe('OwlRouter', () => {
         uniswapV2Router = await ethers.getContractAt('contracts/MockUniswapV2.sol:IUniswapV2Router02', uniswapV2RouterAddress);
         daiToken = await ethers.getContractAt('contracts/MockERC20.sol:ERC20', daiAddress);
 
-        const OwlRouter = await ethers.getContractFactory('OwlRouter');
-        [ owner, manager, user1, user2 ] = await ethers.getSigners();
+        const OwlRouter = await ethers.getContractFactory('contracts/OwlRouterV2.sol:OwlRouter');
+        [ owner, manager, taxWallet, user1, user2 ] = await ethers.getSigners();
         owlRouter = await OwlRouter.deploy(
             owlAddress,
             uniswapV2RouterAddress,
-            ['transfer', 'swap', 'snipe'],
-            [0, 500, 1000],
-            30000,
-            [20000, 30000, 30000],
-            [
-                ethers.utils.parseEther('5000'),
-                ethers.utils.parseEther('30000'),
-                ethers.utils.parseEther('60000'),
-            ],
-            10000,
         );
+
+        await owlRouter.setTaxWallet(taxWallet.address);
 
         // const receipt = await owlRouter.deployTransaction.wait();
         // console.log('gas used', receipt.gasUsed.toString());
@@ -78,24 +71,6 @@ describe('OwlRouter', () => {
                 it('should initialize', async() => {
                     expect(await owlRouter).to.be.ok
                 });
-        
-                it('should change tax fee for transfers', async() => {
-                    await owlRouter.setTaxFee('transfer', 5000);
-                    expect(await owlRouter.getTaxFee('transfer')).to.equal(5000);
-                });
-
-                it ('should revert when trying to use a non-existent mode', async() => {
-                    await expect(
-                        owlRouter.connect(user1).transferETH(user2.address, false, 'invalid', { value: ethers.utils.parseEther('1') })
-                    ).to.be.revertedWith('OwlRouter: invalid mode');
-                });
-        
-                it ('should apply custom mode discounts correctly', async() => {
-                    const mode = 'twelve';
-                    const discount = '12000';
-                    await owlRouter.setTaxFee(mode, discount);
-                    expect(await owlRouter.getTaxFee(mode)).to.equal(discount);
-                });
             }
         },
         {
@@ -103,15 +78,10 @@ describe('OwlRouter', () => {
             tests: async() => {
 
                 let owlTax = 1; // 1%
-                let routerTransferTax = 1000; // 1%
-                let owlTaxDiscount = 30000; // 30%
-                let mode = 'transfer';
+                let routerTax = 1000; // 1%
                 let amountOWL;
         
                 beforeEach(async() => {
-                    await owlRouter.setHolderDiscount([ 0 ], [ ethers.utils.parseEther('0') ]);
-                    await owlRouter.setTaxFee('transfer', routerTransferTax);
-                    await owlRouter.setTaxWallet(manager.address);
         
                     // send OWL to user1
                     amountOWL = ethers.utils.parseEther('10000');
@@ -123,34 +93,25 @@ describe('OwlRouter', () => {
                 });
         
                 it ('should transfer ETH with no tax fee', async() => {
-                    await owlRouter.setTaxFee('transfer', '0');
                     const balanceBefore = await user2.getBalance();
                     const amount = ethers.utils.parseEther('1');
         
-                    // send eth to router
-                    await owlRouter.connect(user1).transferETH(user2.address, false, mode, { value: amount });
+                    await owlRouter.connect(user1).transferETH(user2.address, false, '0', { value: amount });
                     
                     expect(await user2.getBalance()).to.equal(balanceBefore.add(amount));
                 });
-        
+
                 it ('should transfer ETH with fee', async() => {
-                    const user2BalanceBefore = await user2.getBalance();
+                    const user1BalanceBefore = await user1.getBalance();
+                    const taxWalletBalanceBefore = await taxWallet.getBalance();
                     const amount = ethers.utils.parseEther('1');
                     
                     // router fee
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    const managerBefore = await manager.getBalance();
+                    let tax = amount.mul(routerTax).div(100000);
+                    await owlRouter.connect(user2).transferETH(user1.address, false, tax, { value: amount });
         
-                    // console.log('tax', ethers.utils.formatEther(tax));
-                    // console.log('managerBefore', ethers.utils.formatEther(managerBefore));
-                    
-                    // send eth to router
-                    await owlRouter.connect(user1).transferETH(user2.address, false, mode, { value: amount });
-        
-                    // console.log('ownerAfter', ethers.utils.formatEther(await owner.getBalance()));
-                    
-                    expect(await user2.getBalance()).to.equal(user2BalanceBefore.add(amount.sub(tax)));
-                    expect(await manager.getBalance()).to.equal(managerBefore.add(tax));
+                    expect(await user1.getBalance()).to.equal(user1BalanceBefore.add(amount).sub(tax));
+                    expect(await taxWallet.getBalance()).to.equal(taxWalletBalanceBefore.add(tax));
                 });
         
                 it ('should transfer ETH paying with OWL', async() => {
@@ -158,130 +119,90 @@ describe('OwlRouter', () => {
                     const amount = ethers.utils.parseEther('1');
                     
                     // router fee
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    // apply OWL tax discount
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
-                    // convert eth to OWL
+                    let tax = amount.mul(routerTax).div(100000);
                     tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
         
-                    // send eth to router
-                    await owlRouter.connect(user1).transferETH(user2.address, true, mode, { value: amount });
+                    await owlRouter.connect(user1).transferETH(user2.address, true, tax, { value: amount });
         
-                    // check if user2 received eth
                     expect(await user2.getBalance()).to.equal(user2BalanceBefore.add(amount));
-                    // check if manager received OWL tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should transfer DAI with fee', async() => {
                     // send some DAI to user1
-                    const amountDAI = ethers.utils.parseEther('300');
-                    await daiToken.transfer(user1.address, amountDAI);
+                    const amountDAI = ethers.utils.parseEther('1000');
+                    await daiToken.transfer(user2.address, amountDAI);
         
                     // router fee
-                    let tax = amountDAI.mul(routerTransferTax).div(100000);
+                    let tax = amountDAI.mul(routerTax).div(100000);
                     
                     // send dai to user2 through router
-                    await daiToken.connect(user1).approve(owlRouter.address, amountDAI);
-                    await owlRouter.connect(user1).transfer(user2.address, daiAddress, amountDAI, false, mode);
+                    await daiToken.connect(user2).approve(owlRouter.address, amountDAI);
+                    await owlRouter.connect(user2).transfer(user1.address, daiAddress, amountDAI, false, tax);
                     
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(0);
-                    expect(await daiToken.balanceOf(user2.address)).to.equal(amountDAI.sub(tax));
-                    expect(await daiToken.balanceOf(manager.address)).to.equal(tax);
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(0);
+                    expect(await daiToken.balanceOf(user1.address)).to.equal(amountDAI.sub(tax));
+                    expect(await daiToken.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should transfer DAI paying with OWL', async() => {
                     // send some DAI to user1
-                    const amountDAI = ethers.utils.parseEther('300');
+                    const amountDAI = ethers.utils.parseEther('1000');
                     await daiToken.transfer(user1.address, amountDAI);
                     
                     // router fee
-                    let tax = amountDAI.mul(routerTransferTax).div(100000);
-                    // apply OWL tax discount
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
-                    // convert DAI to ETH
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [daiAddress, await uniswapV2Router.WETH()]))[1];
-                    // convert ETH to OWL
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [await uniswapV2Router.WETH(), owlAddress]))[1];
+                    let tax = amountDAI.mul(routerTax).div(100000);
+                    // convert DAI to OWL
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [daiAddress, await uniswapV2Router.WETH(), owlAddress]))[2];
         
                     // send dai to user2 through router
                     await daiToken.connect(user1).approve(owlRouter.address, amountDAI);
-                    await owlRouter.connect(user1).transfer(user2.address, daiAddress, amountDAI, true, mode);
+                    await owlRouter.connect(user1).transfer(user2.address, daiAddress, amountDAI, true, tax);
                     
                     // user 1 should have no DAI
                     expect(await daiToken.balanceOf(user1.address)).to.equal(0);
                     // user 2 should have DAI transfered from user 1
                     expect(await daiToken.balanceOf(user2.address)).to.equal(amountDAI);
                     // manager should have tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should transfer OWL with fee', async() => {
-                    amountOWL = ethers.utils.parseEther('10000');
-                    await owlToken.transfer(user1.address, amountOWL);
-                    amountOWL = await owlToken.balanceOf(user1.address);
+                    let amountOWL = ethers.utils.parseEther('10000');
+                    await owlToken.transfer(user2.address, amountOWL);
+                    amountOWL = await owlToken.balanceOf(user2.address);
         
                     // router fee
-                    let tax = amountOWL.mul(routerTransferTax).div(100000);
-                    
-                    // send dai to user2 through router
-                    await owlToken.connect(user1).approve(owlRouter.address, amountOWL);
-                    await owlRouter.connect(user1).transfer(user2.address, owlAddress, amountOWL, false, mode);
-                    
-                    // user 1 send OWL to user 2
-                    expect(await owlToken.balanceOf(user1.address)).to.equal(0);
-        
+                    let tax = amountOWL.mul(routerTax).div(100000);
                     let owlTaxAmount = amountOWL.sub(tax).mul(owlTax).div(100);
-                    // user 2 should have OWL transfered from user 1
-                    expect(await owlToken.balanceOf(user2.address)).to.equal(amountOWL.sub(tax).sub(owlTaxAmount));
-                    // manager should have tax
-                    owlTaxAmount = tax.mul(owlTax).div(100);
-                    expect(await owlToken.balanceOf(manager.address)).to.equal(tax.sub(owlTaxAmount));
-                });
         
-                it ('should transfer OWL using OWL as payment (same as previous test)', async() => {
-                    amountOWL = ethers.utils.parseEther('10000');
+                    // send dai to user2 through router
+                    await owlToken.connect(user2).approve(owlRouter.address, amountOWL);
+                    await owlRouter.connect(user2).transfer(user1.address, owlAddress, amountOWL, false, tax);
+                    
+                    expect(await owlToken.balanceOf(user2.address)).to.equal(0);
+                    expect(await owlToken.balanceOf(user1.address)).to.equal(amountOWL.sub(tax).sub(owlTaxAmount));
+                    owlTaxAmount = tax.mul(owlTax).div(100);
+                    expect(await owlToken.balanceOf(taxWallet.address)).to.equal(tax.sub(owlTaxAmount));
+                });
+
+                it ('should transfer OWL using OWL as payment', async() => {
+                    let amountOWL = ethers.utils.parseEther('10000');
                     await owlToken.transfer(user1.address, amountOWL);
                     amountOWL = await owlToken.balanceOf(user1.address);
         
                     // router fee
-                    let tax = amountOWL.mul(routerTransferTax).div(100000);
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
+                    let tax = amountOWL.mul(routerTax).div(100000);
         
-                    
                     // send dai to user2 through router
                     await owlToken.connect(user1).approve(owlRouter.address, amountOWL);
-                    await owlRouter.connect(user1).transfer(user2.address, owlAddress, amountOWL, true, mode);
+                    await owlRouter.connect(user1).transfer(user2.address, owlAddress, amountOWL, true, tax);
                     
-                    // user 1 send OWL to user 2
                     expect(await owlToken.balanceOf(user1.address)).to.equal(0);
-        
                     let owlTaxAmount = amountOWL.mul(owlTax).div(100);
-                    // user 2 should have OWL transfered from user 1
                     expect(await owlToken.balanceOf(user2.address)).to.equal(amountOWL.sub(owlTaxAmount));
-                    // manager should have tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
-        
-                it ('should transfer DAI using custom mode', async() => {
-                    // send some DAI to user1
-                    const amountDAI = ethers.utils.parseEther('300');
-                    await daiToken.transfer(user1.address, amountDAI);
-        
-                    // router fee
-                    let fee = '12000'
-                    await owlRouter.setTaxFee('twelve', fee);
-                    let tax = amountDAI.mul(fee).div(100000);
-                    
-                    // send dai to user2 through router
-                    await daiToken.connect(user1).approve(owlRouter.address, amountDAI);
-                    await owlRouter.connect(user1).transfer(user2.address, daiAddress, amountDAI, false, 'twelve');
-                    
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(0);
-                    expect(await daiToken.balanceOf(user2.address)).to.equal(amountDAI.sub(tax));
-                    expect(await daiToken.balanceOf(manager.address)).to.equal(tax);
-                });
-        
             }
         },
         {
@@ -289,17 +210,10 @@ describe('OwlRouter', () => {
             tests: async() => {
 
                 let owlTax = 1; // 1%
-                let routerTransferTax = 1000; // 1%
-                let owlTaxDiscount = 30000; // 30%
-                let mode = 'swap';
+                let routerTax = 1000; // 1%
                 let amountOWL;
         
                 beforeEach(async() => {
-                    await owlRouter.setTaxFee(mode, routerTransferTax);
-                    await owlRouter.setTaxDiscount(owlTaxDiscount);
-                    await owlRouter.setTaxWallet(manager.address);
-                    await owlRouter.setHolderDiscount([ 0 ], [ ethers.utils.parseEther('0') ]);
-        
                     // send OWL to user1
                     amountOWL = ethers.utils.parseEther('10000');
                     await owlToken.transfer(user1.address, amountOWL);
@@ -312,23 +226,23 @@ describe('OwlRouter', () => {
         
                 it ('should swap ETH for DAI paying fee with ETH', async() => {
                     const amount = ethers.utils.parseEther('1');
-                    const managerBalance = await manager.getBalance();
-                    const balanceBefore = await user1.getBalance();
+                    const taxWalletBalance = await taxWallet.getBalance();
+                    const balanceBefore = await user2.getBalance();
                     
-                    let tax = amount.mul(routerTransferTax).div(100000);
+                    let tax = amount.mul(routerTax).div(100000);
                     const amounts = await uniswapV2Router.getAmountsOut(amount.sub(tax), [ await uniswapV2Router.WETH(), daiAddress ]);
         
-                    const tx = await owlRouter.connect(user1).swapETHForTokens(daiAddress, 0, false, mode, { value: amount });
+                    const tx = await owlRouter.connect(user2).swapETHForTokens(daiAddress, 0, false, tax, { value: amount });
                     
                     // reduce ETH
                     const gasUsed = (await tx.wait()).gasUsed;
                     const gasPrice = tx.gasPrice;
                     const gasCost = gasUsed.mul(gasPrice);
-                    expect(await user1.getBalance()).to.equal(balanceBefore.sub(amount).sub(gasCost));
+                    expect(await user2.getBalance()).to.equal(balanceBefore.sub(amount).sub(gasCost));
                     // increase DAI
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(amounts[1]);
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(amounts[1]);
                     // tax
-                    expect(await manager.getBalance()).to.equal(managerBalance.add(tax));
+                    expect(await taxWallet.getBalance()).to.equal(taxWalletBalance.add(tax));
         
         
                 });
@@ -338,50 +252,47 @@ describe('OwlRouter', () => {
                     
                     const amounts = await uniswapV2Router.getAmountsOut(amount, [ await uniswapV2Router.WETH(), daiAddress ]);
                     const owlBefore = await owlRouter.balanceOf(user1.address);
-                    
-                    await owlRouter.connect(user1).swapETHForTokens(daiAddress, 0, true, mode, { value: amount });
-                    
-                    // user1 get DAI
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(amounts[1]);
-        
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    // apply OWL tax discount
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
+
+                    let tax = amount.mul(routerTax).div(100000);
                     // convert eth to OWL
                     tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
+
+                    await owlRouter.connect(user1).swapETHForTokens(daiAddress, 0, true, tax, { value: amount });
                     
+                    // user1 get DAI
+                    expect(await daiToken.balanceOf(user1.address)).to.equal(amounts[1]);                    
                     // user1 should have less OWL
                     expect(await owlRouter.balanceOf(user1.address)).to.equal(owlBefore.sub(tax));
-                    // manager should have tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
+                    // taxWallet should have tax
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should swap DAI for ETH paying fee with ETH', async() => {
                     const amount = ethers.utils.parseEther('1000');
-                    await daiToken.transfer(user1.address, amount);
-                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+                    await daiToken.transfer(user2.address, amount);
+                    await daiToken.connect(user2).approve(owlRouter.address, amount);
+
+                    const taxWalletBalance = await daiToken.balanceOf(taxWallet.address);
         
-                    const managerBalance = await manager.getBalance();
+                    let tax = amount.mul(routerTax).div(100000);
+                    let amountEth = (await uniswapV2Router.getAmountsOut(amount.sub(tax), [ daiAddress, await uniswapV2Router.WETH() ]))[1];
                     
-                    const amounts = await uniswapV2Router.getAmountsOut(amount, [ daiAddress, await uniswapV2Router.WETH() ]);
-                    let tax = amounts[1].mul(routerTransferTax).div(100000);
-                    
-                    const balanceBefore = await user1.getBalance();
-                    const tx = await owlRouter.connect(user1).swapTokensForETH(daiAddress, amount, 0, false, mode);
+                    const balanceBefore = await user2.getBalance();
+                    const tx = await owlRouter.connect(user2).swapTokensForETH(daiAddress, amount, 0, false, tax);
                     
                     // reduce DAI
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(0);
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(0);
         
                     // increase ETH            
                     const gasUsed = (await tx.wait()).gasUsed;
                     const gasPrice = tx.gasPrice;
                     const gasCost = gasUsed.mul(gasPrice);
-                    const balanceAfter = await user1.getBalance();
+                    const balanceAfter = await user2.getBalance();
         
-                    expect(balanceAfter).to.equal(balanceBefore.add(amounts[1]).sub(tax).sub(gasCost));
+                    expect(balanceAfter).to.equal(balanceBefore.add(amountEth).sub(gasCost));
         
                     // tax
-                    expect(await manager.getBalance()).to.equal(managerBalance.add(tax));
+                    expect(await daiToken.balanceOf(taxWallet.address)).to.equal(taxWalletBalance.add(tax));
                 });
         
                 it ('should swap DAI for ETH paying fee with OWL', async() => {
@@ -391,16 +302,14 @@ describe('OwlRouter', () => {
                     
                     const amounts = await uniswapV2Router.getAmountsOut(amount, [ daiAddress, await uniswapV2Router.WETH() ]);
         
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    // apply OWL tax discount
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
+                    let tax = amount.mul(routerTax).div(100000);
                     // convert DAI to OWL
                     tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
         
                     const owlBefore = await owlRouter.balanceOf(user1.address);
         
                     const balanceBefore = await user1.getBalance();
-                    const tx = await owlRouter.connect(user1).swapTokensForETH(daiAddress, amount, 0, true, mode);
+                    const tx = await owlRouter.connect(user1).swapTokensForETH(daiAddress, amount, 0, true, tax);
                     
                     const gasUsed = (await tx.wait()).gasUsed;
                     const gasPrice = tx.gasPrice;
@@ -414,63 +323,59 @@ describe('OwlRouter', () => {
                     // reduce tax
                     expect(await owlRouter.balanceOf(user1.address)).to.equal(owlBefore.sub(tax));
                     // tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should swap ETH for OWL paying fee with ETH', async() => {
                     const amount = ethers.utils.parseEther('1');
-                    const managerBalance = await manager.getBalance();
+                    const taxWalletBalance = await taxWallet.getBalance();
                     
-                    let tax = amount.mul(routerTransferTax).div(100000);
+                    let tax = amount.mul(routerTax).div(100000);
                     const amounts = await uniswapV2Router.getAmountsOut(amount.sub(tax), [ await uniswapV2Router.WETH(), owlAddress ]);
                     let taxOwl = amounts[1].mul(owlTax).div(100);
         
-                    await owlRouter.connect(user1).swapETHForTokens(owlAddress, 0, false, mode, { value: amount });
+                    await owlRouter.connect(user2).swapETHForTokens(owlAddress, 0, false, tax, { value: amount });
                     
                     // increase OWL
-                    expect(await owlToken.balanceOf(user1.address)).to.equal(amounts[1].sub(taxOwl));
+                    expect(await owlToken.balanceOf(user2.address)).to.equal(amounts[1].sub(taxOwl));
                     // tax
-                    expect(await manager.getBalance()).to.equal(managerBalance.add(tax));
+                    expect(await taxWallet.getBalance()).to.equal(taxWalletBalance.add(tax));
                 });
         
                 it ('should swap ETH for OWL paying fee with OWL', async() => {
                     const amount = ethers.utils.parseEther('1');
+                    const balanceBefore = await owlToken.balanceOf(user1.address);
                     
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
-        
-                    const amountOWL = (await uniswapV2Router.getAmountsOut(amount, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
-                    let taxOwl = amountOWL.mul(owlTax).div(100);
+                    const amountOwl = (await uniswapV2Router.getAmountsOut(amount, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
+                    let tax = amountOwl.mul(routerTax).div(100000);
+                    // tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
                     
-                    await owlRouter.connect(user1).swapETHForTokens(owlAddress, 0, true, mode, { value: amount });
+                    await owlRouter.connect(user1).swapETHForTokens(owlAddress, 0, true, tax, { value: amount });
             
                     // increase OWL
-                    expect(await owlToken.balanceOf(user1.address)).to.equal(amountOWL.sub(taxOwl));
+                    expect(await owlToken.balanceOf(user1.address)).to.equal(balanceBefore.add(amountOwl).sub(tax));
                     // tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should swap DAI for OWL paying fee with DAI', async() => {
                     const amount = ethers.utils.parseEther('1000');
-                    await daiToken.transfer(user1.address, amount);
-                    await daiToken.connect(user1).approve(owlRouter.address, amount);
-                    const balanceBefore = await daiToken.balanceOf(user1.address);
+                    await daiToken.transfer(user2.address, amount);
+                    await daiToken.connect(user2).approve(owlRouter.address, amount);
+                    const balanceBefore = await daiToken.balanceOf(user2.address);
         
-                    let tax = amount.mul(routerTransferTax).div(100000);
+                    let tax = amount.mul(routerTax).div(100000);
                     const amounts = await uniswapV2Router.getAmountsOut(amount.sub(tax), [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]);
                     let taxOwl = amounts[2].mul(owlTax).div(100);
         
-                    await owlRouter.connect(user1).swapTokensForTokens(daiAddress, owlAddress, amount, 0, false, mode);
+                    await owlRouter.connect(user2).swapTokensForTokens(daiAddress, owlAddress, amount, 0, false, tax);
                     
-                    // let transferTax = amounts[2].mul(owlTax).div(100);
-        
                     // reduce DAI
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(balanceBefore.sub(amount));
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(balanceBefore.sub(amount));
                     // increase OWL
-                    expect(await owlToken.balanceOf(user1.address)).to.equal(amounts[2].sub(taxOwl));
+                    expect(await owlToken.balanceOf(user2.address)).to.equal(amounts[2].sub(taxOwl));
                     // tax
-                    expect(await daiToken.balanceOf(manager.address)).to.equal(tax);
+                    expect(await daiToken.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
                 it ('should swap DAI for OWL paying fee with OWL', async() => {
@@ -478,179 +383,17 @@ describe('OwlRouter', () => {
                     await daiToken.transfer(user1.address, amount);
                     await daiToken.connect(user1).approve(owlRouter.address, amount);
         
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
-        
-                    const amountOWL = (await uniswapV2Router.getAmountsOut(amount, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
-                    const taxOwl = amountOWL.mul(owlTax).div(100);
+                    const amountOwl = (await uniswapV2Router.getAmountsOut(amount, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    let tax = amountOwl.mul(routerTax).div(100000);
                     
-                    await owlRouter.connect(user1).swapTokensForTokens(daiAddress, owlAddress, amount, 0, true, mode);
+                    await owlRouter.connect(user1).swapTokensForTokens(daiAddress, owlAddress, amount, 0, true, tax);
                     
                     // user1 should have no DAI
                     expect(await daiToken.balanceOf(user1.address)).to.equal(0);
                     // user1 should have OWL
-                    expect(await owlToken.balanceOf(user1.address)).to.equal(amountOWL.sub(taxOwl));
+                    expect(await owlToken.balanceOf(user1.address)).to.equal(amountOwl.sub(tax));
                     // tax
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
-                });
-        
-            }
-        },
-        {
-            name: 'Holder discount',
-            tests: async() => {
-
-                let owlTax = 1; // 1%
-                let routerTransferTax = 1000; // 1%
-                let owlTaxDiscount = 30000; // 30%
-                let holderDiscountSteps = [
-                    ethers.utils.parseEther('5000'),
-                    ethers.utils.parseEther('30000'),
-                    ethers.utils.parseEther('60000'),
-                ];
-                let holderDiscountValues = [ 20000, 30000, 30000 ];
-                let mode = 'swap';
-        
-                function calculateDiscount(balance) {
-                    let discount = ethers.BigNumber.from(0);
-                    for (let i = 0; i < holderDiscountSteps.length; i++) {
-                        if (balance.lt(holderDiscountSteps[i])) {
-                            discount = discount.add(balance.mul(holderDiscountValues[i]).div(holderDiscountSteps[i]));
-                            break;
-                        }
-        
-                        discount = discount.add(holderDiscountValues[i]);
-                        balance = balance.sub(holderDiscountSteps[i]);
-                    }
-                    return discount;
-                }
-        
-                beforeEach(async() => {
-                    await owlRouter.setTaxFee(mode, routerTransferTax);
-                    await owlRouter.setTaxDiscount(owlTaxDiscount);
-                    await owlRouter.setTaxWallet(manager.address);
-                    await owlRouter.setHolderDiscount(holderDiscountValues, holderDiscountSteps);
-                });
-        
-                it ('should get correct holder discount', async() => {
-                    let discount;
-                    let balance;
-                    let increment = 500;
-        
-                    while (true) {
-                        if ((await owlToken.balanceOf(owner.address)).lt(ethers.utils.parseEther(increment.toString()))) {
-                            break;
-                        }
-        
-                        await owlToken.transfer(user1.address, ethers.utils.parseEther(increment.toString()));
-                        balance = await owlToken.balanceOf(user1.address);
-                        discount = await owlRouter.connect(user1).getMyHolderDiscount();
-        
-                        // console.log('balance', ethers.utils.formatEther(balance), 'discount', discount);
-                        expect(discount).to.equal(calculateDiscount(balance));
-                    }
-                });
-        
-                it ('should swap ETH for DAI applying holder discount (ETH)', async() => {
-                    const amount = ethers.utils.parseEther('1');
-                    const managerBalance = await manager.getBalance();
-                    const balanceBefore = await user1.getBalance();
-        
-                    // send OWL to user1
-                    const amountOWL = ethers.utils.parseEther('10000');
-                    await owlToken.transfer(user1.address, amountOWL);
-                    const owlBefore = await owlToken.balanceOf(user1.address);
-                    
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    // apply holder discount
-                    tax = tax.sub(tax.mul(calculateDiscount(owlBefore)).div(100000));
-        
-                    const amounts = await uniswapV2Router.getAmountsOut(amount.sub(tax), [ await uniswapV2Router.WETH(), daiAddress ]);
-        
-                    const tx = await owlRouter.connect(user1).swapETHForTokens(daiAddress, 0, false, mode, { value: amount });
-                    
-                    // reduce ETH
-                    const gasUsed = (await tx.wait()).gasUsed;
-                    const gasPrice = tx.gasPrice;
-                    const gasCost = gasUsed.mul(gasPrice);
-                    expect(await user1.getBalance()).to.equal(balanceBefore.sub(amount).sub(gasCost));
-                    // increase DAI
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(amounts[1]);
-                    // tax
-                    expect(await manager.getBalance()).to.equal(managerBalance.add(tax));
-                });
-        
-                it ('should swap ETH for DAI applying holder discount (OWL)', async() => {
-                    const amount = ethers.utils.parseEther('1');
-                    
-                    // send OWL to user1 and deposit
-                    let amountOWL = ethers.utils.parseEther('20000');
-                    await owlToken.transfer(user1.address, amountOWL);
-                    amountOWL = await owlToken.balanceOf(user1.address);
-                    await owlToken.connect(user1).approve(owlRouter.address, amountOWL);
-                    await owlRouter.connect(user1).deposit(amountOWL.div(2));
-                    let amountOWLDeposited = await owlRouter.balanceOf(user1.address);
-                    let amountOWLWallet = await owlToken.balanceOf(user1.address);
-                    
-                    const amounts = await uniswapV2Router.getAmountsOut(amount, [ await uniswapV2Router.WETH(), daiAddress ]);
-                    
-                    await owlRouter.connect(user1).swapETHForTokens(daiAddress, 0, true, mode, { value: amount });
-                    
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(amounts[1]);
-        
-                    // console.log('original amount', ethers.utils.formatEther(amount));
-                    
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    // console.log('tax after router tax', ethers.utils.formatEther(tax));
-        
-                    // apply OWL tax discount
-                    tax = tax.sub(tax.mul(owlTaxDiscount).div(100000));
-                    // console.log('tax after OWL discount', ethers.utils.formatEther(tax));
-        
-                    // apply holder discount
-                    tax = tax.sub(tax.mul(calculateDiscount(amountOWLWallet)).div(100000));
-                    // console.log('holder discount', calculateDiscount(owlBefore).toString());
-                    // console.log('tax after holder discount', ethers.utils.formatEther(tax));
-        
-                    // convert eth to OWL
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
-                    
-                    expect(await owlRouter.balanceOf(user1.address)).to.equal(amountOWLDeposited.sub(tax));
-                    
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(tax);
-                });
-        
-                it ('should swap DAI for OWL applying holder discount (DAI)', async() => {
-                    const amount = ethers.utils.parseEther('1000');
-                    await daiToken.transfer(user1.address, amount);
-                    await daiToken.connect(user1).approve(owlRouter.address, amount);
-                    const balanceBefore = await daiToken.balanceOf(user1.address);
-        
-                    // send OWL to user1
-                    const amountOWL = ethers.utils.parseEther('10000');
-                    await owlToken.transfer(user1.address, amountOWL);
-                    const owlBefore = await owlToken.balanceOf(user1.address);
-                    
-                    let tax = amount.mul(routerTransferTax).div(100000);
-                    // console.log('tax after router tax', ethers.utils.formatEther(tax));
-                    
-                    // apply holder discount
-                    tax = tax.sub(tax.mul(calculateDiscount(owlBefore)).div(100000));
-                    // console.log('holder discount', calculateDiscount(owlBefore).toString());
-                    // console.log('tax after holder discount', ethers.utils.formatEther(tax));
-        
-                    const amounts = await uniswapV2Router.getAmountsOut(amount.sub(tax), [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]);
-                    let taxOwl = amounts[2].mul(owlTax).div(100);
-        
-                    await owlRouter.connect(user1).swapTokensForTokens(daiAddress, owlAddress, amount, 0, false, mode);
-                    
-                    // reduce DAI
-                    expect(await daiToken.balanceOf(user1.address)).to.equal(balanceBefore.sub(amount));
-                    // increase OWL
-                    expect(await owlToken.balanceOf(user1.address)).to.equal(owlBefore.add(amounts[2]).sub(taxOwl));
-                    // tax
-                    expect(await daiToken.balanceOf(manager.address)).to.equal(tax);
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
         
             }
@@ -659,28 +402,18 @@ describe('OwlRouter', () => {
             name: 'Custom Taxes',
             tests: async() => {
 
-                let managerOWLBalanceBefore;
-                let mode = 'transfer';
                 let customFee = 5000;
-                let customMode = 'custom';
                 let routerTax = 1000;
                 let amountOWL;
+                let managerOWLBalanceBefore;
         
                 beforeEach(async() => {
-                    [ owner, manager, taxWallet, user1, user2 ] = await ethers.getSigners();
-                    await owlRouter.setTaxFee(mode, routerTax.toString());
-                    await owlRouter.setTaxWallet(taxWallet.address);
-                    await owlRouter.connect(manager).setCustomFee(customMode, mode, customFee.toString());
-        
                     // manager have some OWL deposited
                     await owlToken.transfer(manager.address, ethers.utils.parseEther('10000'));
                     managerOWLBalanceBefore = await owlToken.balanceOf(manager.address);
                     await owlToken.connect(manager).approve(owlRouter.address, managerOWLBalanceBefore);
                     await owlRouter.connect(manager).deposit(managerOWLBalanceBefore);
                     managerOWLBalanceBefore = await owlRouter.balanceOf(manager.address);
-        
-                    await owlRouter.setHolderDiscount([0], [ethers.utils.parseEther('0')]);
-                    await owlRouter.setTaxDiscount('0');
         
                     // send OWL to user1 and deposit
                     amountOWL = ethers.utils.parseEther('10000');
@@ -691,41 +424,24 @@ describe('OwlRouter', () => {
                     amountOWL = await owlRouter.balanceOf(user1.address);
                 });
         
-                it ('should set custom fee', async() => {
-                    expect(await owlRouter.connect(manager).getCustomFee(customMode)).to.equal(customFee.toString());
-                });
-
-                it ('should revert when trying to set custom fee with invalid original mode', async() => {
-                    await expect (
-                        owlRouter.connect(manager).setCustomFee(customMode, 'invalid', customFee.toString())
-                    ).to.be.revertedWith('OwlRouter: invalid original mode');
-                });
-
-                it ('should not allow using custom fee when original fee is disabled', async() => {
-                    await owlRouter.disableTaxFee(mode);
-                    await expect (
-                        owlRouter.transfer(user2.address, owlAddress, amountOWL, false, customMode)
-                    ).to.be.revertedWith('OwlRouter: invalid mode');
-                });
-        
                 it ('should transfer ETH with custom fee', async() => {
-                    const balanceBefore = await user2.getBalance();
+                    const balanceBefore = await user1.getBalance();
                     const amount = ethers.utils.parseEther('1');
         
                     const managerETHBalanceBefore = await manager.getBalance();
         
-                    let tax = amount.mul(customFee).div(100000);
-                    await owlRouter.connect(user1).transferETHWithCustomFee(user2.address, false, customMode, manager.address, { value: amount });
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
+                    let customTax = amount.mul(customFee).div(100000);
+                    await owlRouter.connect(user2).transferETHWithCustomFee(user1.address, false, tax, manager.address, customTax, { value: amount });
                     
                     // custom tax applied correctly
-                    expect(await user2.getBalance()).to.equal(balanceBefore.add(amount.sub(tax)));
+                    expect(await user1.getBalance()).to.equal(balanceBefore.add(amount.sub(customTax)));
         
                     // manager received custom tax in ETH
-                    expect(await manager.getBalance()).to.equal(managerETHBalanceBefore.add(tax));
+                    expect(await manager.getBalance()).to.equal(managerETHBalanceBefore.add(customTax));
         
                     // manager sent tax to tax wallet in OWL
-                    tax = amount.mul(routerTax).div(100000);
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [ await uniswapV2Router.WETH(), owlAddress ]))[1];
                     expect(await owlRouter.balanceOf(manager.address)).to.equal(managerOWLBalanceBefore.sub(tax));
                     
                     // tax wallet received tax in OWL
@@ -733,24 +449,24 @@ describe('OwlRouter', () => {
                 });
         
                 it ('should transfer DAI with custom fee', async() => {
-                    await daiToken.transfer(user1.address, ethers.utils.parseEther('1000'));
-                    await daiToken.connect(user1).approve(owlRouter.address, ethers.utils.parseEther('1000'));
+                    await daiToken.transfer(user2.address, ethers.utils.parseEther('1000'));
+                    await daiToken.connect(user2).approve(owlRouter.address, ethers.utils.parseEther('1000'));
         
-                    const balanceBefore = await daiToken.balanceOf(user2.address);
+                    const balanceBefore = await daiToken.balanceOf(user1.address);
                     const amount = ethers.utils.parseEther('1000');
         
-                    let tax = amount.mul(customFee).div(100000);
-                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, false, customMode, manager.address);
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    let customTax = amount.mul(customFee).div(100000);
+                    await owlRouter.connect(user2).transferWithCustomFee(user1.address, daiAddress, amount, false, tax, manager.address, customTax);
                     
                     // custom tax applied correctly
-                    expect(await daiToken.balanceOf(user2.address)).to.equal(balanceBefore.add(amount.sub(tax)));
+                    expect(await daiToken.balanceOf(user1.address)).to.equal(balanceBefore.add(amount.sub(customTax)));
         
                     // manager received custom tax in DAI
-                    expect(await daiToken.balanceOf(manager.address)).to.equal(tax);
+                    expect(await daiToken.balanceOf(manager.address)).to.equal(customTax);
         
                     // manager sent tax to tax wallet in OWL
-                    tax = amount.mul(routerTax).div(100000);
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
                     expect(await owlRouter.balanceOf(manager.address)).to.equal(managerOWLBalanceBefore.sub(tax));
                     
                     // tax wallet received tax in OWL
@@ -764,49 +480,35 @@ describe('OwlRouter', () => {
                     const balanceBefore = await daiToken.balanceOf(user2.address);
                     const amount = ethers.utils.parseEther('1000');
         
-                    let tax = amount.mul(customFee).div(100000);
+                    let tax = amount.mul(routerTax).div(100000);
                     tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    let customTax = amount.mul(customFee).div(100000);
+                    customTax = (await uniswapV2Router.getAmountsOut(customTax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
                     
-                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, true, customMode, manager.address);
+                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, true, tax, manager.address, customTax);
                     
                     // user 2 received DAI
                     expect(await daiToken.balanceOf(user2.address)).to.equal(balanceBefore.add(amount));
                     
                     // custom tax applied correctly
-                    expect(await owlRouter.balanceOf(user1.address)).to.equal(amountOWL.sub(tax));
+                    expect(await owlRouter.balanceOf(user1.address)).to.equal(amountOWL.sub(customTax));
                     
-                    let taxOut = amount.mul(routerTax).div(100000);
-                    taxOut = (await uniswapV2Router.getAmountsOut(taxOut, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
                     // manager received custom tax in OWL
                     // manager sent tax to tax wallet in OWL
-                    expect(await owlRouter.balanceOf(manager.address)).to.equal(managerOWLBalanceBefore.add(tax).sub(taxOut));
+                    expect(await owlRouter.balanceOf(manager.address)).to.equal(managerOWLBalanceBefore.add(customTax).sub(tax));
                     
                     // tax wallet received tax in OWL
-                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(taxOut);
-                });
-
-                it ('should revert when trying to use a non-existent mode', async() => {
-                    const amount = ethers.utils.parseEther('1');
-                    await expect(
-                        owlRouter.connect(user1).transferETHWithCustomFee(user2.address, false, 'invalid', manager.address, { value: amount })
-                    ).to.be.revertedWith('OwlRouter: invalid mode');
-                });
-        
-                it ('should revert if using invalid app address', async() => {
-                    const amount = ethers.utils.parseEther('1');
-                    await expect(
-                        owlRouter.connect(user1).transferETHWithCustomFee(user2.address, false, customMode, owner.address, { value: amount })
-                    ).to.be.revertedWith('OwlRouter: invalid mode');
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
 
                 it ('should transfer correctly when setting custom fee to 0', async() => {
-                    await owlRouter.connect(manager).setCustomFee(customMode, mode, '0');
-
                     const amount = ethers.utils.parseEther('1000');
                     daiToken.transfer(user1.address, amount);
                     await daiToken.connect(user1).approve(owlRouter.address, amount);
 
-                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, false, customMode, manager.address);
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, true, tax, manager.address, '0');
                     
                     // user1 sends dai
                     expect(await daiToken.balanceOf(user1.address)).to.equal(0);
@@ -816,9 +518,28 @@ describe('OwlRouter', () => {
                     expect(await daiToken.balanceOf(manager.address)).to.equal(0);
                     
                     // tax wallet receives normal tax
-                    let tax = amount.mul(routerTax).div(100000);
-                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
                     expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
+                });
+
+                it ('should transfer correctly when setting regular fee to 0', async() => {
+                    const amount = ethers.utils.parseEther('1000');
+                    daiToken.transfer(user1.address, amount);
+                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+
+                    const managerBalanceBefore = await daiToken.balanceOf(manager.address);
+
+                    let customTax = amount.mul(customFee).div(100000);
+                    await owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, false, '0', manager.address, customTax);
+                    
+                    // user1 sends dai
+                    expect(await daiToken.balanceOf(user1.address)).to.equal(0);
+                    // user2 receives dai
+                    expect(await daiToken.balanceOf(user2.address)).to.equal(amount.sub(customTax));
+                    // manager receives tax
+                    expect(await daiToken.balanceOf(manager.address)).to.equal(managerBalanceBefore.add(customTax));
+                    
+                    // tax wallet receives 0 tax
+                    expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(0);
                 });
             }
         },
@@ -921,9 +642,8 @@ describe('OwlRouter', () => {
         'Deployment',
         'Transfer',
         'Swap',
-        'Holder discount',
         'Custom Taxes',
-        'Referral',
+        // 'Referral',
     ].forEach(groupName => {
         if (groups.find(g => g.name === groupName)) {
             const tests = groups.find(g => g.name === groupName).tests;
