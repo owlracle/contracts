@@ -401,7 +401,7 @@ contract OwlRouter is Context, Ownable {
      * @param taxFee The tax fee to pay to the tax wallet.
      */
     function _sendTax(address tokenAddress, uint256 amount, bool payWithOWL, uint256 taxFee) private returns (uint256) {
-        return _sendTaxToTaxWallet(tokenAddress, amount, _taxWallet, payWithOWL, taxFee);
+        return _sendTaxToTaxWallet(tokenAddress, amount, _taxWallet, payWithOWL, taxFee, taxFee);
     }
 
     /**
@@ -422,9 +422,20 @@ contract OwlRouter is Context, Ownable {
         _owlBalances[_taxWallet] = _owlBalances[_taxWallet].add(taxFee);
 
         // send tax from sender to app wallet
-        return _sendTaxToTaxWallet(tokenAddress, amount, appWallet, payWithOWL, customFee);
+        return _sendTaxToTaxWallet(tokenAddress, amount, appWallet, payWithOWL, customFee, customFee);
     }
 
+    /**
+     * @dev Sends tax fee to the tax wallet and referral bonuses to the referrer and referee.
+     * @param tokenAddress The address of the token used in the transaction.
+     * @param amount The amount of tokens used in the transaction.
+     * @param taxFee The tax fee to pay to the tax wallet.
+     * @param referrerWallet The wallet to receive the referral bonus.
+     * @param referrerBonus The referral bonus to pay to the referrer.
+     * @param refereeBonus The referral bonus to pay to the referee.
+     * @notice The referrer and referee bonuses must not exceed the tax fee.
+     * @notice The referral bonuses are deducted from the tax fee.
+     */
     function _sendTaxWithReferral(address tokenAddress, uint256 amount, uint256 taxFee, address referrerWallet, uint256 referrerBonus, uint256 refereeBonus) private returns (uint256) {
         require(referrerBonus.add(refereeBonus) <= taxFee, "OwlRouter: referral bonuses exceed tax fee");
 
@@ -433,7 +444,7 @@ contract OwlRouter is Context, Ownable {
         _owlBalances[_msgSender()] = _owlBalances[_msgSender()].add(refereeBonus);
 
         // send tax from sender to tax wallet
-        return _sendTaxToTaxWallet(tokenAddress, amount, _taxWallet, true, taxFee.sub(referrerBonus).sub(refereeBonus));
+        return _sendTaxToTaxWallet(tokenAddress, amount, _taxWallet, true, taxFee, taxFee.sub(referrerBonus).sub(refereeBonus));
     }
 
     /**
@@ -442,33 +453,34 @@ contract OwlRouter is Context, Ownable {
      * @param amount The amount of tokens used in the transaction.
      * @param taxWallet The wallet to receive the tax fee.
      * @param payWithOWL Whether to pay the tax fee with OWL or input tokens.
-     * @param taxFee The tax fee to pay to the tax wallet.
+     * @param taxSubtracted The tax fee to subtract from the the sender.
+     * @param taxPayed The tax fee to send to the tax wallet.
      * @notice This function is called by _sendTax and _sendTaxWithCustomFee to send the tax fee to the tax wallet.
      */
-    function _sendTaxToTaxWallet(address tokenAddress, uint256 amount, address taxWallet, bool payWithOWL, uint256 taxFee) private returns (uint256) {
-        if (taxFee == 0) {
+    function _sendTaxToTaxWallet(address tokenAddress, uint256 amount, address taxWallet, bool payWithOWL, uint256 taxSubtracted, uint256 taxPayed) private returns (uint256) {
+        if (taxSubtracted == 0) {
             return 0;
         }
 
         // pay tax fee with OWL
         if (payWithOWL) {
-            require(_owlBalances[_msgSender()] >= taxFee, "OwlRouter: sender does not have enough OWL balance");
-            _owlBalances[_msgSender()] = _owlBalances[_msgSender()].sub(taxFee);
-            _owlBalances[taxWallet] = _owlBalances[taxWallet].add(taxFee);
+            require(_owlBalances[_msgSender()] >= taxSubtracted, "OwlRouter: sender does not have enough OWL balance");
+            _owlBalances[_msgSender()] = _owlBalances[_msgSender()].sub(taxSubtracted);
+            _owlBalances[taxWallet] = _owlBalances[taxWallet].add(taxPayed);
             return 0;
         }
 
-        require(taxFee <= amount, "OwlRouter: taxFee exceeds amount");
+        require(taxSubtracted <= amount, "OwlRouter: taxFee exceeds amount");
         
         // pay tax fee with ETH
         if (tokenAddress == address(0)) {
-            payable(taxWallet).transfer(taxFee);
+            payable(taxWallet).transfer(taxSubtracted);
         }
         // pay tax fee with tokens
         else {
-            IERC20(tokenAddress).safeTransferFrom(_msgSender(), taxWallet, taxFee);
+            IERC20(tokenAddress).safeTransferFrom(_msgSender(), taxWallet, taxSubtracted);
         }
-        return taxFee;
+        return taxSubtracted;
     }
 
 
