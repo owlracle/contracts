@@ -203,6 +203,23 @@ describe('OwlRouter', () => {
                     expect(await owlToken.balanceOf(user2.address)).to.equal(amountOWL.sub(owlTaxAmount));
                     expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(tax);
                 });
+
+                it ('should revert when tax exceeds OWL balance in contract', async() => {
+                    const amount = ethers.utils.parseEther('1');
+                    const tax = amount.add(1);
+                    await expect(
+                        owlRouter.connect(user1).transferETH(user2.address, false, tax, { value: amount })
+                    ).to.be.revertedWith('OwlRouter: taxFee exceeds amount');
+                });
+
+                it ('should revert when sending tax higher OWL balance in contract', async() => {
+                    const amount = ethers.utils.parseEther('1');
+                    const balance = await owlRouter.balanceOf(user1.address);
+                    let tax = balance.add(1);
+                    await expect(
+                        owlRouter.connect(user1).transferETH(user2.address, true, tax, { value: amount })
+                    ).to.be.revertedWith('OwlRouter: sender does not have enough OWL balance');
+                });
             }
         },
         {
@@ -719,6 +736,31 @@ describe('OwlRouter', () => {
                     // tax wallet receives 0 tax
                     expect(await owlRouter.balanceOf(taxWallet.address)).to.equal(0);
                 });
+
+                it ('should revert when custom fee exceeds OWL balance in contract', async() => {
+                    const amount = ethers.utils.parseEther('1000');
+                    daiToken.transfer(user1.address, amount);
+                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+                    const balanceOWL = await owlRouter.balanceOf(user1.address);
+
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax, [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+                    await expect(
+                        owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, true, tax, manager.address, balanceOWL.add(1))
+                    ).to.be.revertedWith('OwlRouter: sender does not have enough OWL balance');
+                });
+
+                it ('should revert when tax fee exceeds OWL balance in contract', async() => {
+                    const amount = ethers.utils.parseEther('1000');
+                    daiToken.transfer(user1.address, amount);
+                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+                    const balanceOWL = await owlRouter.balanceOf(manager.address);
+
+                    await expect(
+                        owlRouter.connect(user1).transferWithCustomFee(user2.address, daiAddress, amount, true, balanceOWL.add(1), manager.address, 0)
+                    ).to.be.revertedWith('OwlRouter: app wallet does not have enough OWL balance');
+                });
+
             }
         },
         {
@@ -879,15 +921,32 @@ describe('OwlRouter', () => {
                     expect(await owlRouter.balanceOf(user1.address)).to.equal(amountOWLDeposited.sub(tax).add(refereeAmount));
                 });
 
+                it ('should revert when referral bonuses exceeds tax', async() => {
+                    const amount = ethers.utils.parseEther('1000');
+                    daiToken.transfer(user1.address, amount);
+                    await daiToken.connect(user1).approve(owlRouter.address, amount);
+                    
+                    let tax = amount.mul(routerTax).div(100000);
+                    tax = (await uniswapV2Router.getAmountsOut(tax.sub(1), [ daiAddress, await uniswapV2Router.WETH(), owlAddress ]))[2];
+
+                    await expect(
+                        owlRouter.connect(user1).transferWithReferral(user2.address, daiAddress, amount, tax, referrer.address, tax.add(1), 0)
+                    ).to.be.revertedWith('OwlRouter: referral bonuses exceed tax fee');
+
+                    await expect(
+                        owlRouter.connect(user1).transferWithReferral(user2.address, daiAddress, amount, tax, referrer.address, 0, tax.add(1))
+                    ).to.be.revertedWith('OwlRouter: referral bonuses exceed tax fee');
+                });
+
             }
         },
     ];
 
     [
-        // 'Deployment',
-        // 'Transfer',
-        // 'Swap',
-        // 'Custom Taxes',
+        'Deployment',
+        'Transfer',
+        'Swap',
+        'Custom Taxes',
         'Referral',
     ].forEach(groupName => {
         if (groups.find(g => g.name === groupName)) {
@@ -896,5 +955,3 @@ describe('OwlRouter', () => {
         }
     });
 });
-
-// TODO: build tests that tries to drain contract and appWallet
