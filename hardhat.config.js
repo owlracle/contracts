@@ -1,4 +1,6 @@
 const { task } = require("hardhat/config");
+require("hardhat-contract-sizer");
+
 
 require("@nomicfoundation/hardhat-toolbox");
 
